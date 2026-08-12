@@ -5,6 +5,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddOpenApi();
+builder.Services.AddSingleton<FastDrop.Application.Security.ITokenGenerator, FastDrop.Infrastructure.Security.TokenGenerator>();
 
 // Register FastDropDbContext
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
