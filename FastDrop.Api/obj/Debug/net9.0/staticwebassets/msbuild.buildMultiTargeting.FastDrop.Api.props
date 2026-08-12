@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="../build/FastDrop.Api.props" />
-</Project>
