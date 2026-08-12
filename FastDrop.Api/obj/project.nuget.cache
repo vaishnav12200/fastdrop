@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "vLCiJQOKeCo=",
+  "success": true,
+  "projectFilePath": "/home/vaishnavkm/Projects/projects/FastDrop/FastDrop.Api/FastDrop.Api.csproj",
+  "expectedPackageFiles": [
+    "/home/vaishnavkm/.nuget/packages/microsoft.aspnetcore.openapi/9.0.17/microsoft.aspnetcore.openapi.9.0.17.nupkg.sha512",
+    "/home/vaishnavkm/.nuget/packages/microsoft.openapi/1.6.17/microsoft.openapi.1.6.17.nupkg.sha512"
+  ],
+  "logs": []
+}
