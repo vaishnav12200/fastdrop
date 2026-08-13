@@ -13,7 +13,7 @@ public class FileMetadata
 
     // Navigation property for Entity Framework Core
     private readonly List<ChunkMetadata> _chunks = new();
-    public IReadOnlyCollection<ChunkMetadata> Chunks => _chunks.AsReadOnly();
+    public IReadOnlyCollection<ChunkMetadata> Chunks => _chunks;
 
     private FileMetadata()
     {

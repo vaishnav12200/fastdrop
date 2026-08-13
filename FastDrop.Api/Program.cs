@@ -1,20 +1,22 @@
 using FastDrop.Application.Common.Interfaces;
+using Scalar.AspNetCore;
 using FastDrop.Application.Security;
 using FastDrop.Application.Services;
 using FastDrop.Infrastructure.Data;
 using FastDrop.Infrastructure.Repositories;
 using FastDrop.Infrastructure.Security;
+using FastDrop.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add Controllers and Swagger
+// Add Controllers and OpenAPI
 builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddOpenApi();
 
 // Dependency Injection Registrations
 builder.Services.AddSingleton<ITokenGenerator, TokenGenerator>();
+builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
 builder.Services.AddScoped<ITransferRepository, TransferRepository>();
 builder.Services.AddScoped<ITransferService, TransferService>();
 
@@ -29,11 +31,11 @@ builder.Services.AddDbContext<FastDropDbContext>(options =>
 
 var app = builder.Build();
 
-// Enable Swagger UI in Development
+// Enable Scalar UI in Development
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    app.MapOpenApi();
+    app.MapScalarApiReference();
 }
 
 app.UseHttpsRedirection();

@@ -10,11 +10,13 @@ public class TransferService : ITransferService
 {
     private readonly ITransferRepository _repository;
     private readonly ITokenGenerator _tokenGenerator;
+    private readonly IFileStorage _fileStorage;
 
-    public TransferService(ITransferRepository repository, ITokenGenerator tokenGenerator)
+    public TransferService(ITransferRepository repository, ITokenGenerator tokenGenerator, IFileStorage fileStorage)
     {
         _repository = repository;
         _tokenGenerator = tokenGenerator;
+        _fileStorage = fileStorage;
     }
 
     public async Task<CreateTransferResponse> CreateTransferAsync(CreateTransferRequest request, CancellationToken cancellationToken = default)
@@ -91,6 +93,41 @@ public class TransferService : ITransferService
             // the state transition failure. The token was valid, so they are authorized.
         }
 
+        return true;
+    }
+
+    public async Task<bool> UploadChunkAsync(Guid transferId, string senderToken, int chunkNumber, Stream data, CancellationToken cancellationToken = default)
+    {
+        var transfer = await _repository.GetByIdAsync(transferId, cancellationToken);
+        if (transfer == null) return false;
+
+        if (!_tokenGenerator.VerifyToken(senderToken, transfer.SenderTokenHash))
+        {
+            throw new UnauthorizedAccessException("Invalid sender token.");
+        }
+
+        if (transfer.Status == TransferStatus.Created || transfer.Status == TransferStatus.WaitingForReceiver || transfer.Status == TransferStatus.ReceiverConnected)
+        {
+            transfer.StartUpload();
+        }
+        else if (transfer.Status != TransferStatus.Uploading)
+        {
+            throw new InvalidOperationException($"Cannot upload chunks in state {transfer.Status}");
+        }
+
+        if (transfer.File.Chunks.Any(c => c.ChunkNumber == chunkNumber))
+        {
+            return true; // Idempotency: chunk already exists, safely ignore duplicate network retry
+        }
+
+        // Stream the bytes directly to disk!
+        await _fileStorage.StoreChunkAsync(transferId, chunkNumber, data, cancellationToken);
+
+        // Basic metadata record (we'll implement real hashing in Phase 8)
+        var chunkMeta = new ChunkMetadata(transfer.File.Id, chunkNumber, 0, "pending_hash");
+        transfer.File.AddChunk(chunkMeta);
+
+        await _repository.SaveChangesAsync(cancellationToken);
         return true;
     }
 }

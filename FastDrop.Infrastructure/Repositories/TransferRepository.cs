@@ -23,6 +23,7 @@ public class TransferRepository : ITransferRepository
     {
         return await _dbContext.TransferSessions
             .Include(t => t.File)
+                .ThenInclude(f => f.Chunks)
             .FirstOrDefaultAsync(t => t.Id == id, ct);
     }
 
