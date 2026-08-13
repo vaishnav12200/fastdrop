@@ -1,13 +1,24 @@
+using FastDrop.Application.Common.Interfaces;
+using FastDrop.Application.Security;
+using FastDrop.Application.Services;
 using FastDrop.Infrastructure.Data;
+using FastDrop.Infrastructure.Repositories;
+using FastDrop.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddOpenApi();
-builder.Services.AddSingleton<FastDrop.Application.Security.ITokenGenerator, FastDrop.Infrastructure.Security.TokenGenerator>();
+// Add Controllers and Swagger
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
-// Register FastDropDbContext
+// Dependency Injection Registrations
+builder.Services.AddSingleton<ITokenGenerator, TokenGenerator>();
+builder.Services.AddScoped<ITransferRepository, TransferRepository>();
+builder.Services.AddScoped<ITransferService, TransferService>();
+
+// Database Registration
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
@@ -18,12 +29,14 @@ builder.Services.AddDbContext<FastDropDbContext>(options =>
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Enable Swagger UI in Development
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
 app.UseHttpsRedirection();
+app.MapControllers(); // Maps the HTTP routes to our Controllers
 
 app.Run();
