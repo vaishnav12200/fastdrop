@@ -22,5 +22,13 @@ public class TransferSessionConfiguration : IEntityTypeConfiguration<TransferSes
         
         // Index on Status to quickly find transfers in a specific state
         builder.HasIndex(t => t.Status);
+
+        // One-to-One relationship: A TransferSession owns exactly one FileMetadata.
+        // The FK (TransferSessionId) lives on the FileMetadata table.
+        builder.HasOne(t => t.File)
+               .WithOne()
+               .HasForeignKey<FileMetadata>("TransferSessionId")
+               .IsRequired()
+               .OnDelete(DeleteBehavior.Cascade);
     }
 }

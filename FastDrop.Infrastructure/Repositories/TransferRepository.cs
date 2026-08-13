@@ -19,6 +19,13 @@ public class TransferRepository : ITransferRepository
         _dbContext.TransferSessions.Add(transfer);
     }
 
+    public void AddChunk(ChunkMetadata chunk)
+    {
+        // Explicitly attach to the DbContext - do NOT rely on EF Core graph traversal
+        // through private readonly fields to discover new entities.
+        _dbContext.Chunks.Add(chunk);
+    }
+
     public async Task<TransferSession?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         return await _dbContext.TransferSessions

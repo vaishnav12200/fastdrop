@@ -123,9 +123,11 @@ public class TransferService : ITransferService
         // Stream the bytes directly to disk!
         await _fileStorage.StoreChunkAsync(transferId, chunkNumber, data, cancellationToken);
 
-        // Basic metadata record (we'll implement real hashing in Phase 8)
+        // Explicitly add the chunk to the DbContext via the repository.
+        // Do NOT use transfer.File.AddChunk() here — EF Core cannot reliably detect
+        // new entities added to a private readonly backing field via graph traversal.
         var chunkMeta = new ChunkMetadata(transfer.File.Id, chunkNumber, 0, "pending_hash");
-        transfer.File.AddChunk(chunkMeta);
+        _repository.AddChunk(chunkMeta);
 
         await _repository.SaveChangesAsync(cancellationToken);
         return true;
