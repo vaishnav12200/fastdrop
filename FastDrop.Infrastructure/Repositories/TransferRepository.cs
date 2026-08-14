@@ -34,6 +34,13 @@ public class TransferRepository : ITransferRepository
             .FirstOrDefaultAsync(t => t.Id == id, ct);
     }
 
+    public async Task<int> GetReceivedChunkCountAsync(Guid fileMetadataId, CancellationToken ct = default)
+    {
+        // CountAsync translates to a fast SQL COUNT(*) - never load the rows into memory just to count them
+        return await _dbContext.Chunks
+            .CountAsync(c => c.FileMetadataId == fileMetadataId, ct);
+    }
+
     public async Task SaveChangesAsync(CancellationToken ct = default)
     {
         await _dbContext.SaveChangesAsync(ct);

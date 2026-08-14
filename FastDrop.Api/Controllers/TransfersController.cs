@@ -58,10 +58,10 @@ public class TransfersController : ControllerBase
         // We NEVER load the file into memory using IFormFile. We stream it dynamically!
         try
         {
-            var success = await _transferService.UploadChunkAsync(id, token, chunkNumber, Request.Body, cancellationToken);
-            if (!success) return NotFound();
-            
-            return Ok();
+            var response = await _transferService.UploadChunkAsync(id, token, chunkNumber, Request.Body, cancellationToken);
+            if (response == null) return NotFound();
+
+            return Ok(response);
         }
         catch (UnauthorizedAccessException)
         {

@@ -96,10 +96,10 @@ public class TransferService : ITransferService
         return true;
     }
 
-    public async Task<bool> UploadChunkAsync(Guid transferId, string senderToken, int chunkNumber, Stream data, CancellationToken cancellationToken = default)
+    public async Task<UploadChunkResponse?> UploadChunkAsync(Guid transferId, string senderToken, int chunkNumber, Stream data, CancellationToken cancellationToken = default)
     {
         var transfer = await _repository.GetByIdAsync(transferId, cancellationToken);
-        if (transfer == null) return false;
+        if (transfer == null) return null;
 
         if (!_tokenGenerator.VerifyToken(senderToken, transfer.SenderTokenHash))
         {
@@ -115,21 +115,37 @@ public class TransferService : ITransferService
             throw new InvalidOperationException($"Cannot upload chunks in state {transfer.Status}");
         }
 
-        if (transfer.File.Chunks.Any(c => c.ChunkNumber == chunkNumber))
+        // Idempotency: if the client retries a chunk that already landed, just re-confirm success.
+        // We count from the DB (the source of truth), not from the in-memory collection,
+        // because in-memory state can be stale across requests.
+        bool isNewChunk = !transfer.File.Chunks.Any(c => c.ChunkNumber == chunkNumber);
+
+        if (isNewChunk)
         {
-            return true; // Idempotency: chunk already exists, safely ignore duplicate network retry
+            // Stream the bytes directly to disk — no RAM buffering!
+            await _fileStorage.StoreChunkAsync(transferId, chunkNumber, data, cancellationToken);
+
+            // Persist the chunk metadata record (hash will be added in Phase 8)
+            var chunkMeta = new ChunkMetadata(transfer.File.Id, chunkNumber, 0, "pending_hash");
+            _repository.AddChunk(chunkMeta);
         }
 
-        // Stream the bytes directly to disk!
-        await _fileStorage.StoreChunkAsync(transferId, chunkNumber, data, cancellationToken);
-
-        // Explicitly add the chunk to the DbContext via the repository.
-        // Do NOT use transfer.File.AddChunk() here — EF Core cannot reliably detect
-        // new entities added to a private readonly backing field via graph traversal.
-        var chunkMeta = new ChunkMetadata(transfer.File.Id, chunkNumber, 0, "pending_hash");
-        _repository.AddChunk(chunkMeta);
-
+        // Save both the Status change (Uploading) AND the new ChunkMetadata INSERT in a single transaction
         await _repository.SaveChangesAsync(cancellationToken);
-        return true;
+
+        // Now ask the database for the authoritative count AFTER saving this chunk
+        int receivedChunks = await _repository.GetReceivedChunkCountAsync(transfer.File.Id, cancellationToken);
+        int totalChunks = transfer.File.TotalChunks;
+        bool isComplete = receivedChunks >= totalChunks;
+
+        // If all chunks are in, automatically advance the state machine to Ready.
+        // "Ready" means: all bytes are on disk, the receiver can now start downloading.
+        if (isComplete && transfer.Status == TransferStatus.Uploading)
+        {
+            transfer.MarkAsReady();
+            await _repository.SaveChangesAsync(cancellationToken);
+        }
+
+        return new UploadChunkResponse(chunkNumber, totalChunks, receivedChunks, isComplete);
     }
 }
