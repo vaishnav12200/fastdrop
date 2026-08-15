@@ -72,4 +72,51 @@ public class TransfersController : ControllerBase
             return BadRequest(ex.Message);
         }
     }
+
+    [HttpGet("{id:guid}/download")]
+    public async Task<IActionResult> DownloadFile(Guid id, [FromHeader(Name = "X-FastDrop-Token")] string token, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(token))
+            return Unauthorized("Missing X-FastDrop-Token header.");
+
+        DownloadTransferResponse response;
+        try
+        {
+            var result = await _transferService.InitiateDownloadAsync(id, token, cancellationToken);
+            if (result == null) return NotFound();
+            response = result;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+
+        // Ensure the file stream is disposed after the response is fully sent.
+        Response.RegisterForDispose(response.FileStream);
+
+        // Set Content-Disposition so the browser knows the real filename to save.
+        // "attachment" tells the browser to download rather than display in-tab.
+        Response.Headers.ContentDisposition = $"attachment; filename=\"{response.FileName}\"";
+
+        // Returning a FileStreamResult streams the body directly without buffering in memory.
+        // After it is sent, we mark the transfer as Completed.
+        var streamResult = new FileStreamResult(response.FileStream, response.ContentType)
+        {
+            FileDownloadName = response.FileName,
+            EnableRangeProcessing = true // Allows resume/partial content (HTTP 206)
+        };
+
+        // Fire-and-forget the completion after the response is fully written.
+        // We cannot await here because the response is already streaming.
+        Response.OnCompleted(async () =>
+        {
+            await _transferService.CompleteDownloadAsync(id, CancellationToken.None);
+        });
+
+        return streamResult;
+    }
 }

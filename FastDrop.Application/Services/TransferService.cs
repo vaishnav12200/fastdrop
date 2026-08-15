@@ -154,4 +154,52 @@ public class TransferService : ITransferService
 
         return new UploadChunkResponse(chunkNumber, totalChunks, receivedChunks, isComplete);
     }
+
+    public async Task<DownloadTransferResponse?> InitiateDownloadAsync(Guid transferId, string receiverToken, CancellationToken cancellationToken = default)
+    {
+        var transfer = await _repository.GetByIdAsync(transferId, cancellationToken);
+        if (transfer == null) return null;
+
+        if (!_tokenGenerator.VerifyToken(receiverToken, transfer.ReceiverTokenHash))
+        {
+            throw new UnauthorizedAccessException("Invalid receiver token.");
+        }
+
+        // Only files that are fully assembled can be downloaded.
+        if (transfer.Status != TransferStatus.Ready && transfer.Status != TransferStatus.Downloading)
+        {
+            throw new InvalidOperationException($"Transfer is not ready for download. Current status: {transfer.Status}");
+        }
+
+        // Advance to Downloading so the sender knows the receiver is actively pulling.
+        if (transfer.Status == TransferStatus.Ready)
+        {
+            transfer.StartDownload();
+            await _repository.SaveChangesAsync(cancellationToken);
+        }
+
+        var fileStream = await _fileStorage.OpenFinalFileAsync(transferId, cancellationToken);
+
+        return new DownloadTransferResponse(
+            fileStream,
+            transfer.File.OriginalFileName,
+            transfer.File.ContentType,
+            transfer.File.Size
+        );
+    }
+
+    public async Task CompleteDownloadAsync(Guid transferId, CancellationToken cancellationToken = default)
+    {
+        var transfer = await _repository.GetByIdAsync(transferId, cancellationToken);
+        if (transfer == null) return;
+
+        // Complete() on the domain entity guards the state machine — it only
+        // succeeds if Status == Downloading. Idempotently ignore other states.
+        try
+        {
+            transfer.Complete();
+            await _repository.SaveChangesAsync(cancellationToken);
+        }
+        catch (InvalidOperationException) { /* Already completed or wrong state, safe to ignore. */ }
+    }
 }

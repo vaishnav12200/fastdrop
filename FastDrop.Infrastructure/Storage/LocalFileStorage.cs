@@ -67,6 +67,18 @@ public class LocalFileStorage : IFileStorage
         return Convert.ToHexStringLower(sha256.Hash!);
     }
 
+    public Task<Stream> OpenFinalFileAsync(Guid transferId, CancellationToken cancellationToken = default)
+    {
+        var finalPath = Path.Combine(_baseStoragePath, transferId.ToString(), "final.dat");
+
+        if (!File.Exists(finalPath))
+            throw new FileNotFoundException($"Assembled file for transfer {transferId} not found.");
+
+        // FileShare.Read allows concurrent readers, important if multiple receivers try to download.
+        Stream stream = new FileStream(finalPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920, useAsync: true);
+        return Task.FromResult(stream);
+    }
+
     public Task<Stream> OpenChunkAsync(Guid transferId, int chunkNumber, CancellationToken cancellationToken = default)
     {
         var chunkPath = Path.Combine(_baseStoragePath, transferId.ToString(), "chunks", chunkNumber.ToString("D6"));
