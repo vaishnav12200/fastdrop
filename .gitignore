@@ -5,6 +5,17 @@
 
 # dotenv files
 .env
+.env.*
+
+# Local app storage and generated transfer data
+/FastDrop.Api/storage/
+/FastDrop.Api/storage/transfers/
+
+# Local secret override files
+*.secret
+*.secrets.json
+appsettings.*.local.json
+appsettings.*.Secrets.json
 
 # User-specific files
 *.rsuser
