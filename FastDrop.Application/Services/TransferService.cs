@@ -123,10 +123,12 @@ public class TransferService : ITransferService
         if (isNewChunk)
         {
             // Stream the bytes directly to disk — no RAM buffering!
-            await _fileStorage.StoreChunkAsync(transferId, chunkNumber, data, cancellationToken);
+            // It simultaneously computes and returns the SHA-256 hash.
+            string hash = await _fileStorage.StoreChunkAsync(transferId, chunkNumber, data, cancellationToken);
 
-            // Persist the chunk metadata record (hash will be added in Phase 8)
-            var chunkMeta = new ChunkMetadata(transfer.File.Id, chunkNumber, 0, "pending_hash");
+            // Persist the chunk metadata record with the actual hash
+            // (Setting size to 0 for now as we don't track chunk size rigorously yet)
+            var chunkMeta = new ChunkMetadata(transfer.File.Id, chunkNumber, 0, hash);
             _repository.AddChunk(chunkMeta);
         }
 
