@@ -144,6 +144,10 @@ public class TransferService : ITransferService
         // "Ready" means: all bytes are on disk, the receiver can now start downloading.
         if (isComplete && transfer.Status == TransferStatus.Uploading)
         {
+            // Assemble the final file and calculate its overall hash
+            string finalHash = await _fileStorage.AssembleFileAsync(transfer.Id, totalChunks, cancellationToken);
+            transfer.File.SetFileHash(finalHash);
+
             transfer.MarkAsReady();
             await _repository.SaveChangesAsync(cancellationToken);
         }

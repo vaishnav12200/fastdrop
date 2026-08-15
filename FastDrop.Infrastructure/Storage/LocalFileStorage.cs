@@ -35,6 +35,38 @@ public class LocalFileStorage : IFileStorage
         return Convert.ToHexStringLower(sha256.Hash!);
     }
 
+    public async Task<string> AssembleFileAsync(Guid transferId, int totalChunks, CancellationToken cancellationToken = default)
+    {
+        var transferDir = Path.Combine(_baseStoragePath, transferId.ToString());
+        var finalPath = Path.Combine(transferDir, "final.dat");
+        var chunksDir = Path.Combine(transferDir, "chunks");
+
+        using var fileStream = new FileStream(finalPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true);
+        using var sha256 = SHA256.Create();
+
+        await using (var cryptoStream = new CryptoStream(fileStream, sha256, CryptoStreamMode.Write, leaveOpen: true))
+        {
+            for (int i = 0; i < totalChunks; i++)
+            {
+                var chunkPath = Path.Combine(chunksDir, i.ToString("D6"));
+                if (!File.Exists(chunkPath))
+                    throw new FileNotFoundException($"Missing chunk {i} during assembly.");
+
+                using var chunkStream = new FileStream(chunkPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920, useAsync: true);
+                await chunkStream.CopyToAsync(cryptoStream, cancellationToken);
+            }
+            await cryptoStream.FlushFinalBlockAsync(cancellationToken);
+        }
+
+        // Clean up individual chunks after successful assembly
+        if (Directory.Exists(chunksDir))
+        {
+            Directory.Delete(chunksDir, recursive: true);
+        }
+
+        return Convert.ToHexStringLower(sha256.Hash!);
+    }
+
     public Task<Stream> OpenChunkAsync(Guid transferId, int chunkNumber, CancellationToken cancellationToken = default)
     {
         var chunkPath = Path.Combine(_baseStoragePath, transferId.ToString(), "chunks", chunkNumber.ToString("D6"));
