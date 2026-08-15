@@ -1,5 +1,6 @@
 using FastDrop.Application.Common.Interfaces;
 using FastDrop.Domain.Entities;
+using FastDrop.Domain.Enums;
 using FastDrop.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -39,6 +40,18 @@ public class TransferRepository : ITransferRepository
         // CountAsync translates to a fast SQL COUNT(*) - never load the rows into memory just to count them
         return await _dbContext.Chunks
             .CountAsync(c => c.FileMetadataId == fileMetadataId, ct);
+    }
+
+    public async Task<List<TransferSession>> GetExpiredTransfersAsync(DateTimeOffset now, int batchSize, CancellationToken ct = default)
+    {
+        // Terminal states — no action needed, never include them.
+        var terminalStates = new[] { TransferStatus.Completed, TransferStatus.Expired, TransferStatus.Cancelled };
+
+        return await _dbContext.TransferSessions
+            .Where(t => t.ExpiresAt <= now && !terminalStates.Contains(t.Status))
+            .OrderBy(t => t.ExpiresAt) // Oldest first
+            .Take(batchSize)
+            .ToListAsync(ct);
     }
 
     public async Task SaveChangesAsync(CancellationToken ct = default)

@@ -33,17 +33,7 @@ FastDrop.Domain (Core business entities, value objects, interfaces)
 FastDrop.Application (Use cases, DTOs, application logic)
        ↑
 FastDrop.Infrastructure (SQL Server, Redis, File Storage implementation)
-       ↑M buffering. 100% streaming efficiency.
-       
-       In TransferService.UploadChunkAsync, we simply capture this returned hash and store it in the database:
-       
-       csharp
-       string hash = await _fileStorage.StoreChunkAsync(transferId, chunkNumber, data, cancellationToken);
-       var chunkMeta = new ChunkMetadata(transfer.File.Id, chunkNumber, 0, hash);
-       Ready to test!
-       If you restart your API and upload a chunk, you can query your SQL database (SELECT * FROM Chunks) and you will see the actual SHA-256 hash stored in the Hash column instead of "pending_hash".
-       
-       Shall we move on to Phase 9: Finalizing the transfer (combining chunks / verifying final file integrity), or would you like to verify the hashing first?
+       ↑
 FastDrop.Api (HTTP endpoints, controllers, middleware)
 ```
 

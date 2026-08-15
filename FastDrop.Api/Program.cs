@@ -1,4 +1,5 @@
 using FastDrop.Application.Common.Interfaces;
+using FastDrop.Api.BackgroundServices;
 using Scalar.AspNetCore;
 using FastDrop.Application.Security;
 using FastDrop.Application.Services;
@@ -19,6 +20,10 @@ builder.Services.AddSingleton<ITokenGenerator, TokenGenerator>();
 builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
 builder.Services.AddScoped<ITransferRepository, TransferRepository>();
 builder.Services.AddScoped<ITransferService, TransferService>();
+
+// Register the background cleanup worker.
+// AddHostedService registers it as a singleton that is started and stopped with the application.
+builder.Services.AddHostedService<TransferCleanupWorker>();
 
 // Database Registration
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
