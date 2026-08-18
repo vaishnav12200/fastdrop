@@ -90,6 +90,34 @@ builder.Services.AddDbContext<FastDropDbContext>(options =>
 
 var app = builder.Build();
 
+// Auto-apply EF Core migrations on startup.
+// This is safe for containerized deployments where migrations must run before first request.
+// Includes retry logic to handle SQL Server container startup lag.
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<FastDropDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<FastDropDbContext>>();
+    
+    var retries = 10;
+    while (retries > 0)
+    {
+        try
+        {
+            logger.LogInformation("Attempting to apply database migrations...");
+            db.Database.Migrate();
+            logger.LogInformation("Database migrations applied successfully.");
+            break;
+        }
+        catch (Exception ex)
+        {
+            retries--;
+            logger.LogWarning("Migration failed: {Message}. Retries left: {Retries}", ex.Message, retries);
+            if (retries == 0) throw;
+            Thread.Sleep(5000); // Wait 5s before retrying
+        }
+    }
+}
+
 // Enable Scalar UI in Development
 if (app.Environment.IsDevelopment())
 {
@@ -100,6 +128,13 @@ if (app.Environment.IsDevelopment())
 app.UseForwardedHeaders(); // Must be before RateLimiter
 app.UseRateLimiter(); // Apply Rate Limiting
 app.UseHttpsRedirection();
+
+// Serve static files from wwwroot
+app.UseStaticFiles();
+
 app.MapControllers(); // Maps the HTTP routes to our Controllers
+
+// Fallback to index.html for SPA routing (if needed)
+app.MapFallbackToFile("index.html");
 
 app.Run();

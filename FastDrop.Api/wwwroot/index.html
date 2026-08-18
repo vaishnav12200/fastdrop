@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastDrop - Seamless Large File Transfers</title>
+    <meta name="description" content="Secure, fast, and temporary file transfers with chunked streaming.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css?v=2">
+</head>
+<body>
+    <div class="background-effects">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+    </div>
+
+    <main class="app-container">
+        <header>
+            <h1 class="logo">FastDrop</h1>
+            <p class="subtitle">Secure peer-to-peer file transfer. No limits.</p>
+        </header>
+
+        <!-- Dynamic Views Container -->
+        <div id="view-container" class="glass-panel">
+            
+            <!-- VIEW: SENDER (Upload) -->
+            <div id="view-upload" class="view active">
+                <div class="dropzone" id="dropzone">
+                    <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <h2>Drag & Drop your file here</h2>
+                    <p>or click to browse</p>
+                    <input type="file" id="file-input" style="display: none;">
+                </div>
+            </div>
+
+            <!-- VIEW: WAITING FOR RECEIVER -->
+            <div id="view-waiting" class="view hidden">
+                <h2>Transfer Created</h2>
+                <p>Share this link with the receiver:</p>
+                <div class="copy-box">
+                    <input type="text" id="share-link" readonly>
+                    <button id="copy-btn">Copy</button>
+                </div>
+                <div class="pulse-ring">
+                    <div class="pulse-inner"></div>
+                </div>
+                <p class="status-text">Waiting for receiver to connect...</p>
+            </div>
+
+            <!-- VIEW: TRANSFER PROGRESS -->
+            <div id="view-progress" class="view hidden">
+                <h2 id="progress-title">Transferring...</h2>
+                <p id="file-name-display" class="file-name"></p>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="progress-bar"></div>
+                </div>
+                <div class="progress-stats">
+                    <span id="progress-percent">0%</span>
+                    <span id="progress-chunks">0 / 0 chunks</span>
+                </div>
+                <p class="status-text" id="status-message">Uploading chunks...</p>
+            </div>
+
+            <!-- VIEW: SUCCESS -->
+            <div id="view-success" class="view hidden">
+                <div class="success-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                    </svg>
+                </div>
+                <h2>Transfer Complete!</h2>
+                <p>The file was successfully sent.</p>
+                <button class="btn-primary" onclick="location.href='/'">Send Another File</button>
+            </div>
+
+        </div>
+    </main>
+
+    <script src="/app.js?v=2"></script>
+</body>
+</html>
