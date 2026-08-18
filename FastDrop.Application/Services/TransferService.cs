@@ -4,6 +4,9 @@ using FastDrop.Application.Security;
 using FastDrop.Domain.Entities;
 using FastDrop.Domain.Enums;
 
+using Microsoft.Extensions.Caching.Distributed;
+using System.Text.Json;
+
 namespace FastDrop.Application.Services;
 
 public class TransferService : ITransferService
@@ -11,12 +14,16 @@ public class TransferService : ITransferService
     private readonly ITransferRepository _repository;
     private readonly ITokenGenerator _tokenGenerator;
     private readonly IFileStorage _fileStorage;
+    private readonly IDistributedCache _cache;
+    private readonly IDistributedLockProvider _lockProvider;
 
-    public TransferService(ITransferRepository repository, ITokenGenerator tokenGenerator, IFileStorage fileStorage)
+    public TransferService(ITransferRepository repository, ITokenGenerator tokenGenerator, IFileStorage fileStorage, IDistributedCache cache, IDistributedLockProvider lockProvider)
     {
         _repository = repository;
         _tokenGenerator = tokenGenerator;
         _fileStorage = fileStorage;
+        _cache = cache;
+        _lockProvider = lockProvider;
     }
 
     public async Task<CreateTransferResponse> CreateTransferAsync(CreateTransferRequest request, CancellationToken cancellationToken = default)
@@ -51,17 +58,36 @@ public class TransferService : ITransferService
 
     public async Task<TransferDetailsResponse?> GetTransferAsync(Guid transferId, CancellationToken cancellationToken = default)
     {
+        string cacheKey = $"Transfer_{transferId}";
+        
+        // 1. Try to fetch from Redis Cache first
+        var cachedData = await _cache.GetStringAsync(cacheKey, cancellationToken);
+        if (!string.IsNullOrEmpty(cachedData))
+        {
+            return JsonSerializer.Deserialize<TransferDetailsResponse>(cachedData);
+        }
+
+        // 2. Cache miss -> fetch from Database
         var transfer = await _repository.GetByIdAsync(transferId, cancellationToken);
 
         if (transfer == null) return null;
 
-        return new TransferDetailsResponse(
+        var response = new TransferDetailsResponse(
             transfer.Id,
             transfer.Status.ToString(),
             transfer.File.OriginalFileName,
             transfer.File.Size,
             transfer.ExpiresAt
         );
+
+        // 3. Save to Redis Cache (expire in 5 seconds to keep data fresh but still shield DB from 100 req/sec polling)
+        var cacheOptions = new DistributedCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(5)
+        };
+        await _cache.SetStringAsync(cacheKey, JsonSerializer.Serialize(response), cacheOptions, cancellationToken);
+
+        return response;
     }
 
     public async Task<bool> JoinTransferAsync(Guid transferId, JoinTransferRequest request, CancellationToken cancellationToken = default)
@@ -86,6 +112,7 @@ public class TransferService : ITransferService
             // Updates state to ReceiverConnected if currently waiting.
             transfer.ConnectReceiver(); 
             await _repository.SaveChangesAsync(cancellationToken);
+            await _cache.RemoveAsync($"Transfer_{transferId}", cancellationToken);
         }
         catch(InvalidOperationException)
         {
@@ -134,6 +161,7 @@ public class TransferService : ITransferService
 
         // Save both the Status change (Uploading) AND the new ChunkMetadata INSERT in a single transaction
         await _repository.SaveChangesAsync(cancellationToken);
+        await _cache.RemoveAsync($"Transfer_{transferId}", cancellationToken);
 
         // Now ask the database for the authoritative count AFTER saving this chunk
         int receivedChunks = await _repository.GetReceivedChunkCountAsync(transfer.File.Id, cancellationToken);
@@ -141,15 +169,30 @@ public class TransferService : ITransferService
         bool isComplete = receivedChunks >= totalChunks;
 
         // If all chunks are in, automatically advance the state machine to Ready.
-        // "Ready" means: all bytes are on disk, the receiver can now start downloading.
+        // We use a distributed lock here to prevent two concurrent chunk uploads
+        // from both triggering AssembleFileAsync at the exact same millisecond.
         if (isComplete && transfer.Status == TransferStatus.Uploading)
         {
-            // Assemble the final file and calculate its overall hash
-            string finalHash = await _fileStorage.AssembleFileAsync(transfer.Id, totalChunks, cancellationToken);
-            transfer.File.SetFileHash(finalHash);
+            string lockKey = $"TransferLock_{transferId}";
+            // Wait up to 15 seconds to acquire lock, hold for up to 30 seconds
+            await using var lockReleaser = await _lockProvider.TryAcquireLockAsync(lockKey, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(15), cancellationToken);
+            
+            if (lockReleaser != null)
+            {
+                // Re-fetch transfer inside lock to ensure we didn't lose the race
+                transfer = await _repository.GetByIdAsync(transferId, cancellationToken);
+                
+                if (transfer != null && transfer.Status == TransferStatus.Uploading)
+                {
+                    // Assemble the final file and calculate its overall hash
+                    string finalHash = await _fileStorage.AssembleFileAsync(transfer.Id, totalChunks, cancellationToken);
+                    transfer.File.SetFileHash(finalHash);
 
-            transfer.MarkAsReady();
-            await _repository.SaveChangesAsync(cancellationToken);
+                    transfer.MarkAsReady();
+                    await _repository.SaveChangesAsync(cancellationToken);
+                    await _cache.RemoveAsync($"Transfer_{transferId}", cancellationToken);
+                }
+            }
         }
 
         return new UploadChunkResponse(chunkNumber, totalChunks, receivedChunks, isComplete);
@@ -176,6 +219,7 @@ public class TransferService : ITransferService
         {
             transfer.StartDownload();
             await _repository.SaveChangesAsync(cancellationToken);
+            await _cache.RemoveAsync($"Transfer_{transferId}", cancellationToken);
         }
 
         var fileStream = await _fileStorage.OpenFinalFileAsync(transferId, cancellationToken);
@@ -199,6 +243,7 @@ public class TransferService : ITransferService
         {
             transfer.Complete();
             await _repository.SaveChangesAsync(cancellationToken);
+            await _cache.RemoveAsync($"Transfer_{transferId}", cancellationToken);
         }
         catch (InvalidOperationException) { /* Already completed or wrong state, safe to ignore. */ }
     }
