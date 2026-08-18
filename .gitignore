@@ -493,3 +493,16 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# FastDrop Custom Ignore
+# Ignore uploaded files and chunks
+**/storage/
+storage/
+
+# Ignore sensitive configuration overrides
+appsettings.Development.json
+appsettings.Local.json
+secrets.json
+
+# Ignore scratch scripts
+test_db.csx
