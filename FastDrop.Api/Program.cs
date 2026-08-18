@@ -11,11 +11,45 @@ using Microsoft.EntityFrameworkCore;
 
 using StackExchange.Redis;
 
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Threading.RateLimiting;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add Controllers and OpenAPI
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+
+// Configure Forwarded Headers for reverse proxy environments (e.g. Docker + Nginx)
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Clear known networks/proxies to trust all for local development/docker compose
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
+// Configure Global Rate Limiter
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        // Extract IP address or fallback to unknown
+        var ipAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        
+        return RateLimitPartition.GetSlidingWindowLimiter(
+            partitionKey: ipAddress,
+            factory: partition => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = 500,
+                Window = TimeSpan.FromSeconds(10),
+                SegmentsPerWindow = 2,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 100
+            });
+    });
+});
 
 // Redis Registration (Connection Multiplexer for Locks)
 var redisConnectionString = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379";
@@ -63,6 +97,8 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
+app.UseForwardedHeaders(); // Must be before RateLimiter
+app.UseRateLimiter(); // Apply Rate Limiting
 app.UseHttpsRedirection();
 app.MapControllers(); // Maps the HTTP routes to our Controllers
 
