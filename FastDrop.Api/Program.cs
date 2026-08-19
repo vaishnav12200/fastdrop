@@ -54,7 +54,9 @@ builder.Services.AddRateLimiter(options =>
 // Redis Registration (Connection Multiplexer for Locks)
 var rawRedisConnectionString = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379";
 var redisConnectionString = NormalizeRedisConnectionString(rawRedisConnectionString);
-builder.Services.AddSingleton<IConnectionMultiplexer>(sp => ConnectionMultiplexer.Connect(redisConnectionString));
+var redisOptions = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString);
+redisOptions.AbortOnConnectFail = false; // Guaranteed to not crash on startup
+builder.Services.AddSingleton<IConnectionMultiplexer>(sp => ConnectionMultiplexer.Connect(redisOptions));
 
 // Dependency Injection Registrations
 builder.Services.AddSingleton<ITokenGenerator, TokenGenerator>();
@@ -70,7 +72,7 @@ builder.Services.AddHostedService<TransferCleanupWorker>();
 // Redis Registration
 builder.Services.AddStackExchangeRedisCache(options =>
 {
-    options.Configuration = redisConnectionString;
+    options.ConfigurationOptions = redisOptions;
     options.InstanceName = "FastDrop_";
 });
 
@@ -217,7 +219,7 @@ static string NormalizeRedisConnectionString(string cs)
         password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : Uri.UnescapeDataString(userInfo[0]);
     }
 
-    var result = $"{host}:{port},abortConnect=false";
+    var result = $"{host}:{port}";
     if (!string.IsNullOrEmpty(password))
     {
         result += $",password={password}";
