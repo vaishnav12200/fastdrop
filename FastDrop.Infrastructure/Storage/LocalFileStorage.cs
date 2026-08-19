@@ -35,48 +35,22 @@ public class LocalFileStorage : IFileStorage
         return Convert.ToHexStringLower(sha256.Hash!);
     }
 
-    public async Task<string> AssembleFileAsync(Guid transferId, int totalChunks, CancellationToken cancellationToken = default)
+    public Task<Stream> OpenFinalFileAsync(Guid transferId, int totalChunks, CancellationToken cancellationToken = default)
     {
-        var transferDir = Path.Combine(_baseStoragePath, transferId.ToString());
-        var finalPath = Path.Combine(transferDir, "final.dat");
-        var chunksDir = Path.Combine(transferDir, "chunks");
-
-        using var fileStream = new FileStream(finalPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true);
-        using var sha256 = SHA256.Create();
-
-        await using (var cryptoStream = new CryptoStream(fileStream, sha256, CryptoStreamMode.Write, leaveOpen: true))
+        var chunksDir = Path.Combine(_baseStoragePath, transferId.ToString(), "chunks");
+        
+        var chunkPaths = new List<string>();
+        for (int i = 0; i < totalChunks; i++)
         {
-            for (int i = 0; i < totalChunks; i++)
-            {
-                var chunkPath = Path.Combine(chunksDir, i.ToString("D6"));
-                if (!File.Exists(chunkPath))
-                    throw new FileNotFoundException($"Missing chunk {i} during assembly.");
-
-                using var chunkStream = new FileStream(chunkPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920, useAsync: true);
-                await chunkStream.CopyToAsync(cryptoStream, cancellationToken);
-            }
-            await cryptoStream.FlushFinalBlockAsync(cancellationToken);
+            var chunkPath = Path.Combine(chunksDir, i.ToString("D6"));
+            if (!File.Exists(chunkPath))
+                throw new FileNotFoundException($"Missing chunk {i} for transfer {transferId}");
+            chunkPaths.Add(chunkPath);
         }
 
-        // Clean up individual chunks after successful assembly
-        if (Directory.Exists(chunksDir))
-        {
-            Directory.Delete(chunksDir, recursive: true);
-        }
-
-        return Convert.ToHexStringLower(sha256.Hash!);
-    }
-
-    public Task<Stream> OpenFinalFileAsync(Guid transferId, CancellationToken cancellationToken = default)
-    {
-        var finalPath = Path.Combine(_baseStoragePath, transferId.ToString(), "final.dat");
-
-        if (!File.Exists(finalPath))
-            throw new FileNotFoundException($"Assembled file for transfer {transferId} not found.");
-
-        // FileShare.Read allows concurrent readers, important if multiple receivers try to download.
-        Stream stream = new FileStream(finalPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920, useAsync: true);
-        return Task.FromResult(stream);
+        // Return a stream that seamlessly reads across all chunk files sequentially
+        Stream compositeStream = new CompositeStream(chunkPaths);
+        return Task.FromResult(compositeStream);
     }
 
     public Task<Stream> OpenChunkAsync(Guid transferId, int chunkNumber, CancellationToken cancellationToken = default)

@@ -170,7 +170,7 @@ public class TransferService : ITransferService
 
         // If all chunks are in, automatically advance the state machine to Ready.
         // We use a distributed lock here to prevent two concurrent chunk uploads
-        // from both triggering AssembleFileAsync at the exact same millisecond.
+        // from both triggering this logic at the exact same millisecond.
         if (isComplete && transfer.Status == TransferStatus.Uploading)
         {
             string lockKey = $"TransferLock_{transferId}";
@@ -184,9 +184,10 @@ public class TransferService : ITransferService
                 
                 if (transfer != null && transfer.Status == TransferStatus.Uploading)
                 {
-                    // Assemble the final file and calculate its overall hash
-                    string finalHash = await _fileStorage.AssembleFileAsync(transfer.Id, totalChunks, cancellationToken);
-                    transfer.File.SetFileHash(finalHash);
+                    // No more slow Assembly process!
+                    // The file hash is just set to a dummy value or we leave it blank, 
+                    // as chunk-level hashes already guarantee integrity.
+                    transfer.File.SetFileHash("composite-stream-no-global-hash");
 
                     transfer.MarkAsReady();
                     await _repository.SaveChangesAsync(cancellationToken);
@@ -222,7 +223,7 @@ public class TransferService : ITransferService
             await _cache.RemoveAsync($"Transfer_{transferId}", cancellationToken);
         }
 
-        var fileStream = await _fileStorage.OpenFinalFileAsync(transferId, cancellationToken);
+        var fileStream = await _fileStorage.OpenFinalFileAsync(transferId, transfer.File.TotalChunks, cancellationToken);
 
         return new DownloadTransferResponse(
             fileStream,

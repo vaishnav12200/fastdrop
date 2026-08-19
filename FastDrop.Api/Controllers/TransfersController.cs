@@ -107,7 +107,7 @@ public class TransfersController : ControllerBase
         var streamResult = new FileStreamResult(response.FileStream, response.ContentType)
         {
             FileDownloadName = response.FileName,
-            EnableRangeProcessing = true // Allows resume/partial content (HTTP 206)
+            EnableRangeProcessing = false // Must be false because CompositeStream is forward-only
         };
 
         // Fire-and-forget the completion after the response is fully written.
