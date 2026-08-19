@@ -52,7 +52,11 @@ builder.Services.AddRateLimiter(options =>
 });
 
 // Redis Registration (Connection Multiplexer for Locks)
-var rawRedisConnectionString = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379";
+var rawRedisConnectionString = builder.Configuration.GetConnectionString("Redis") 
+    ?? builder.Configuration["REDIS_URL"] 
+    ?? builder.Configuration["Redis"]
+    ?? "localhost:6379";
+    
 var redisConnectionString = NormalizeRedisConnectionString(rawRedisConnectionString);
 var redisOptions = StackExchange.Redis.ConfigurationOptions.Parse(redisConnectionString);
 redisOptions.AbortOnConnectFail = false; // Guaranteed to not crash on startup
