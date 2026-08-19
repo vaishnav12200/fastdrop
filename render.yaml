@@ -1,0 +1,26 @@
+services:
+  # Managed Redis Instance for Distributed Locks
+  - type: redis
+    name: fastdrop-redis
+    plan: free # Change to starter/standard for production
+    ipAllowList: [] # Allowed to be accessed internally by the web service
+    
+  # FastDrop API Docker Web Service
+  - type: web
+    name: fastdrop-api
+    env: docker
+    plan: free # Change to starter/standard for production
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      # Inject the internal Redis connection string securely
+      - key: ConnectionStrings__Redis
+        fromService:
+          type: redis
+          name: fastdrop-redis
+          property: connectionString
+      # Neon DB Connection String must be added via the Render Dashboard manually for security
+      - key: ConnectionStrings__DefaultConnection
+        sync: false 

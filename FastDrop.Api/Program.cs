@@ -8,17 +8,17 @@ using FastDrop.Infrastructure.Repositories;
 using FastDrop.Infrastructure.Security;
 using FastDrop.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
-
+using Microsoft.Extensions.FileProviders;
 using StackExchange.Redis;
-
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add Controllers and OpenAPI
+// Add Controllers, OpenAPI, and Response Compression
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+builder.Services.AddResponseCompression(opts => opts.EnableForHttps = true);
 
 // Configure Forwarded Headers for reverse proxy environments (e.g. Docker + Nginx)
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
@@ -127,14 +127,39 @@ if (app.Environment.IsDevelopment())
 
 app.UseForwardedHeaders(); // Must be before RateLimiter
 app.UseRateLimiter(); // Apply Rate Limiting
+app.UseResponseCompression(); // Compress responses (gzip/brotli)
 app.UseHttpsRedirection();
 
-// Serve static files from wwwroot
-app.UseStaticFiles();
+// Serve static files from wwwroot with cache headers
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        // Cache static assets (JS, CSS) for 1 hour. HTML is short-lived.
+        var path = ctx.File.Name;
+        if (path.EndsWith(".js") || path.EndsWith(".css"))
+        {
+            ctx.Context.Response.Headers.CacheControl = "public, max-age=3600";
+        }
+        else
+        {
+            ctx.Context.Response.Headers.CacheControl = "no-cache";
+        }
+    }
+});
 
 app.MapControllers(); // Maps the HTTP routes to our Controllers
 
-// Fallback to index.html for SPA routing (if needed)
+// Explicitly serve about.html so the SPA fallback doesn't swallow it
+app.MapGet("/about", async context =>
+{
+    context.Response.ContentType = "text/html";
+    await context.Response.SendFileAsync(
+        Path.Combine(app.Environment.WebRootPath, "about.html")
+    );
+});
+
+// Fallback to index.html for SPA routing (all other non-API routes)
 app.MapFallbackToFile("index.html");
 
 app.Run();

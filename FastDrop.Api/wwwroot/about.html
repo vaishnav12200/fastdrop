@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About FastDrop Developer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css?v=3">
+    <style>
+        .about-container {
+            max-width: 800px;
+            text-align: left;
+            align-items: flex-start;
+        }
+        
+        .profile-header {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--glass-border);
+            width: 100%;
+        }
+
+        .avatar {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: 800;
+            color: white;
+            box-shadow: 0 0 20px var(--primary-glow);
+        }
+
+        .profile-info h1 {
+            font-size: 2rem;
+            margin-bottom: 0.2rem;
+            background: linear-gradient(135deg, #fff, var(--text-muted));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .profile-info p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        .profile-info a {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .profile-info a:hover {
+            text-decoration: underline;
+        }
+
+        .tech-stack {
+            width: 100%;
+        }
+
+        .tech-stack h2 {
+            margin-bottom: 1.5rem;
+            font-size: 1.5rem;
+        }
+
+        .tech-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--glass-border);
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+        }
+
+        .tech-item h3 {
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .tech-item p {
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+        
+        .back-btn {
+            margin-top: 2rem;
+            background: transparent;
+            border: 1px solid var(--glass-border);
+            color: var(--text-main);
+            padding: 0.8rem 2rem;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="background-effects">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+    </div>
+
+    <main class="app-container about-container">
+        <div class="glass-panel" style="width: 100%;">
+            <div class="profile-header">
+                <div class="avatar">V</div>
+                <div class="profile-info">
+                    <h1>Vaishnav KM</h1>
+                    <p>Engineering Student & Developer</p>
+                    <p>Email: <a href="mailto:devalghub@gmail.com">devalghub@gmail.com</a></p>
+                </div>
+            </div>
+
+            <div class="tech-stack">
+                <h2>Behind the Scenes</h2>
+                
+                <div class="tech-item">
+                    <h3>⚡ Chunked Streaming</h3>
+                    <p>FastDrop bypasses traditional memory buffering. Massive files are sliced into chunks in your browser and streamed directly to disk, ensuring the server uses near-zero RAM regardless of file size.</p>
+                </div>
+
+                <div class="tech-item">
+                    <h3>🔒 Zero-Trust Tokens</h3>
+                    <p>Database leaks are useless here. FastDrop uses ephemeral, SHA-256 hashed tokens. The database holds no decryptable keys, ensuring absolute privacy for your temporary transfers.</p>
+                </div>
+
+                <div class="tech-item">
+                    <h3>🔄 Redis Distributed Locks</h3>
+                    <p>Because the browser uploads chunks in parallel, a distributed locking mechanism using Redis prevents race conditions, ensuring perfect file assembly under heavy concurrency.</p>
+                </div>
+
+                <div class="tech-item">
+                    <h3>☁️ Serverless State (Neon DB)</h3>
+                    <p>The backend stores transfer state in Neon's Serverless PostgreSQL database, allowing for instant scaling and rapid connection pooling while the core system remains lightweight.</p>
+                </div>
+
+            </div>
+
+            <a href="/" class="back-btn">&larr; Back to App</a>
+        </div>
+    </main>
+</body>
+</html>

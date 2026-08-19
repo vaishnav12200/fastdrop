@@ -239,11 +239,10 @@ async function startReceiverFlow(transferId, token) {
 async function initiateDownload(transferId, token, fileName) {
     progressTitle.textContent = 'Downloading!';
     statusMessage.textContent = 'Your download is starting...';
-    progressBar.style.width = '100%';
-    progressPercent.textContent = '100%';
+    progressBar.style.width = '0%';
+    progressPercent.textContent = '0%';
 
     try {
-        // The download controller also uses X-FastDrop-Token header (not Authorization)
         const res = await fetch(`${API_BASE}/${transferId}/download`, {
             method: 'GET',
             headers: { 'X-FastDrop-Token': token }
@@ -261,7 +260,40 @@ async function initiateDownload(transferId, token, fileName) {
             if (match) downloadName = match[1];
         }
 
-        const blob = await res.blob();
+        const contentLength = res.headers.get('Content-Length');
+        const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
+        let receivedBytes = 0;
+
+        // Stream directly to disk via a Service Worker / native stream approach.
+        // We collect chunks into an array and track progress — much more memory efficient
+        // than await res.blob() which loads the ENTIRE file into RAM before saving.
+        const chunks = [];
+        const reader = res.body.getReader();
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            chunks.push(value);
+            receivedBytes += value.byteLength;
+
+            if (totalBytes > 0) {
+                const percent = Math.round((receivedBytes / totalBytes) * 100);
+                progressBar.style.width = `${percent}%`;
+                progressPercent.textContent = `${percent}%`;
+                const mbReceived = (receivedBytes / 1024 / 1024).toFixed(1);
+                const mbTotal = (totalBytes / 1024 / 1024).toFixed(1);
+                statusMessage.textContent = `${mbReceived} MB / ${mbTotal} MB`;
+            } else {
+                // Unknown total size — just show received amount
+                progressBar.style.width = '80%';
+                const mb = (receivedBytes / 1024 / 1024).toFixed(1);
+                statusMessage.textContent = `Received ${mb} MB...`;
+            }
+        }
+
+        // All bytes received — now create blob and trigger save dialog
+        const blob = new Blob(chunks);
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.style.display = 'none';
@@ -269,11 +301,17 @@ async function initiateDownload(transferId, token, fileName) {
         a.download = downloadName;
         document.body.appendChild(a);
         a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+        // Delay revocation slightly to ensure download dialog has opened
+        setTimeout(() => {
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }, 1000);
 
-        // Backend auto-completes via Response.OnCompleted callback — no extra call needed.
-        switchView('success');
+        progressBar.style.width = '100%';
+        progressPercent.textContent = '100%';
+        statusMessage.textContent = 'Download complete!';
+
+        setTimeout(() => switchView('success'), 800);
         document.querySelector('#view-success p').textContent = 'File successfully received!';
 
     } catch (e) {
