@@ -3,17 +3,17 @@ using System;
 using FastDrop.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
 namespace FastDrop.Infrastructure.Migrations
 {
     [DbContext(typeof(FastDropDbContext))]
-    [Migration("20260812153642_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20260819141213_InitialPostgres")]
+    partial class InitialPostgres
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -21,32 +21,32 @@ namespace FastDrop.Infrastructure.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasAnnotation("ProductVersion", "9.0.19")
-                .HasAnnotation("Relational:MaxIdentifierLength", 128);
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
-            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("FastDrop.Domain.Entities.ChunkMetadata", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("ChunkNumber")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("FileMetadataId")
-                        .HasColumnType("uniqueidentifier");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Hash")
                         .IsRequired()
                         .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
+                        .HasColumnType("character varying(256)");
 
                     b.Property<int>("Size")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.Property<DateTimeOffset>("UploadedAt")
-                        .HasColumnType("datetimeoffset");
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
@@ -60,35 +60,41 @@ namespace FastDrop.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("ChunkSize")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.Property<string>("ContentType")
                         .IsRequired()
                         .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
+                        .HasColumnType("character varying(256)");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("FileHash")
                         .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
+                        .HasColumnType("character varying(256)");
 
                     b.Property<string>("OriginalFileName")
                         .IsRequired()
                         .HasMaxLength(1024)
-                        .HasColumnType("nvarchar(1024)");
+                        .HasColumnType("character varying(1024)");
 
                     b.Property<long>("Size")
                         .HasColumnType("bigint");
 
                     b.Property<int>("TotalChunks")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TransferSessionId")
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TransferSessionId")
+                        .IsUnique();
 
                     b.ToTable("Files");
                 });
@@ -97,38 +103,33 @@ namespace FastDrop.Infrastructure.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset?>("CompletedAt")
-                        .HasColumnType("datetimeoffset");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset>("ExpiresAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid>("FileId")
-                        .HasColumnType("uniqueidentifier");
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ReceiverTokenHash")
                         .IsRequired()
                         .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
+                        .HasColumnType("character varying(256)");
 
                     b.Property<string>("SenderTokenHash")
                         .IsRequired()
                         .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
+                        .HasColumnType("character varying(256)");
 
                     b.Property<int>("Status")
-                        .HasColumnType("int");
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
                     b.HasIndex("ExpiresAt");
-
-                    b.HasIndex("FileId");
 
                     b.HasIndex("Status");
 
@@ -144,20 +145,24 @@ namespace FastDrop.Infrastructure.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("FastDrop.Domain.Entities.TransferSession", b =>
+            modelBuilder.Entity("FastDrop.Domain.Entities.FileMetadata", b =>
                 {
-                    b.HasOne("FastDrop.Domain.Entities.FileMetadata", "File")
-                        .WithMany()
-                        .HasForeignKey("FileId")
+                    b.HasOne("FastDrop.Domain.Entities.TransferSession", null)
+                        .WithOne("File")
+                        .HasForeignKey("FastDrop.Domain.Entities.FileMetadata", "TransferSessionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("File");
                 });
 
             modelBuilder.Entity("FastDrop.Domain.Entities.FileMetadata", b =>
                 {
                     b.Navigation("Chunks");
+                });
+
+            modelBuilder.Entity("FastDrop.Domain.Entities.TransferSession", b =>
+                {
+                    b.Navigation("File")
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

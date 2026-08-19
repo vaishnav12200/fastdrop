@@ -79,7 +79,7 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 
 builder.Services.AddDbContext<FastDropDbContext>(options =>
 {
-    options.UseSqlServer(connectionString);
+    options.UseNpgsql(connectionString);
     // Log all SQL statements to the console in Development so we can debug EF Core issues
     if (builder.Environment.IsDevelopment())
     {
