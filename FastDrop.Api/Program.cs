@@ -52,7 +52,8 @@ builder.Services.AddRateLimiter(options =>
 });
 
 // Redis Registration (Connection Multiplexer for Locks)
-var redisConnectionString = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379";
+var rawRedisConnectionString = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379";
+var redisConnectionString = NormalizeRedisConnectionString(rawRedisConnectionString);
 builder.Services.AddSingleton<IConnectionMultiplexer>(sp => ConnectionMultiplexer.Connect(redisConnectionString));
 
 // Dependency Injection Registrations
@@ -191,4 +192,37 @@ static string NormalizePostgresConnectionString(string cs)
     var sslMode = query["sslmode"] ?? "Require";
 
     return $"Host={host};Port={port};Database={database};Username={username};Password={password};Ssl Mode={sslMode};";
+}
+
+// ---------------------------------------------------------------------------
+// Helper: converts a redis:// URI to a StackExchange.Redis connection string.
+// ---------------------------------------------------------------------------
+static string NormalizeRedisConnectionString(string cs)
+{
+    if (!cs.StartsWith("redis://") && !cs.StartsWith("rediss://"))
+        return cs; // Already in hostname:port format
+
+    var uri = new Uri(cs);
+    var host = uri.Host;
+    var port = uri.IsDefaultPort ? 6379 : uri.Port;
+    var password = "";
+    
+    if (!string.IsNullOrEmpty(uri.UserInfo))
+    {
+        var userInfo = uri.UserInfo.Split(':', 2);
+        password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : Uri.UnescapeDataString(userInfo[0]);
+    }
+
+    var result = $"{host}:{port}";
+    if (!string.IsNullOrEmpty(password))
+    {
+        result += $",password={password}";
+    }
+    
+    if (cs.StartsWith("rediss://"))
+    {
+        result += ",ssl=True";
+    }
+
+    return result;
 }
