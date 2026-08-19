@@ -21,6 +21,11 @@ services:
           type: redis
           name: fastdrop-redis
           property: connectionString
+      # Disables inotify file watchers for config files (required on Render free tier)
+      # ASP.NET Core watches appsettings.json for hot-reload by default, which exhausts
+      # the OS inotify limit (128) on Render's shared infra. Not needed in production.
+      - key: DOTNET_hostBuilder__reloadConfigOnChange
+        value: "false"
       # Neon DB Connection String must be added via the Render Dashboard manually for security
       - key: ConnectionStrings__DefaultConnection
         sync: false 
