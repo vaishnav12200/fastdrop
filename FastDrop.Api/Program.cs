@@ -74,8 +74,13 @@ builder.Services.AddStackExchangeRedisCache(options =>
 });
 
 // Database Registration
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
+var rawConnectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+
+// Normalize the connection string: Render (and Neon) may provide a postgres:// URI,
+// but Npgsql only accepts the standard ADO.NET Key=Value format.
+// This helper converts either format transparently.
+var connectionString = NormalizePostgresConnectionString(rawConnectionString);
 
 builder.Services.AddDbContext<FastDropDbContext>(options =>
 {
@@ -163,3 +168,27 @@ app.MapGet("/about", async context =>
 app.MapFallbackToFile("index.html");
 
 app.Run();
+
+// ---------------------------------------------------------------------------
+// Helper: converts a postgres:// URI to an Npgsql ADO.NET connection string.
+// Npgsql does NOT accept the URI format that Neon/Render use natively.
+// ---------------------------------------------------------------------------
+static string NormalizePostgresConnectionString(string cs)
+{
+    if (!cs.StartsWith("postgresql://") && !cs.StartsWith("postgres://"))
+        return cs; // Already in ADO.NET format — nothing to do.
+
+    var uri = new Uri(cs);
+    var userInfo = uri.UserInfo.Split(':', 2);
+    var username = Uri.UnescapeDataString(userInfo[0]);
+    var password  = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : string.Empty;
+    var host      = uri.Host;
+    var port      = uri.IsDefaultPort ? 5432 : uri.Port;
+    var database  = uri.AbsolutePath.TrimStart('/');
+
+    // Parse query params (e.g. sslmode=require)
+    var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+    var sslMode = query["sslmode"] ?? "Require";
+
+    return $"Host={host};Port={port};Database={database};Username={username};Password={password};Ssl Mode={sslMode};";
+}
