@@ -176,7 +176,9 @@ app.Run();
 // ---------------------------------------------------------------------------
 static string NormalizePostgresConnectionString(string cs)
 {
-    if (!cs.StartsWith("postgresql://") && !cs.StartsWith("postgres://"))
+    cs = cs?.Trim('"', '\'', ' ', '\n', '\r') ?? "";
+    if (!cs.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase) && 
+        !cs.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase))
         return cs; // Already in ADO.NET format — nothing to do.
 
     var uri = new Uri(cs);
@@ -199,7 +201,9 @@ static string NormalizePostgresConnectionString(string cs)
 // ---------------------------------------------------------------------------
 static string NormalizeRedisConnectionString(string cs)
 {
-    if (!cs.StartsWith("redis://") && !cs.StartsWith("rediss://"))
+    cs = cs?.Trim('"', '\'', ' ', '\n', '\r') ?? "";
+    if (!cs.StartsWith("redis://", StringComparison.OrdinalIgnoreCase) && 
+        !cs.StartsWith("rediss://", StringComparison.OrdinalIgnoreCase))
         return cs; // Already in hostname:port format
 
     var uri = new Uri(cs);
@@ -213,13 +217,13 @@ static string NormalizeRedisConnectionString(string cs)
         password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : Uri.UnescapeDataString(userInfo[0]);
     }
 
-    var result = $"{host}:{port}";
+    var result = $"{host}:{port},abortConnect=false";
     if (!string.IsNullOrEmpty(password))
     {
         result += $",password={password}";
     }
     
-    if (cs.StartsWith("rediss://"))
+    if (cs.StartsWith("rediss://", StringComparison.OrdinalIgnoreCase))
     {
         result += ",ssl=True";
     }
