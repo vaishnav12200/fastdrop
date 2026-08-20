@@ -15,10 +15,23 @@ using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure Kestrel for high-throughput file streaming
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.Limits.MaxRequestBodySize = null; // No limit on upload size
+    serverOptions.Limits.MinResponseDataRate = null; // Don't kill slow downloads
+});
+
 // Add Controllers, OpenAPI, and Response Compression
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
-builder.Services.AddResponseCompression(opts => opts.EnableForHttps = true);
+builder.Services.AddResponseCompression(opts => 
+{
+    opts.EnableForHttps = true;
+    // Exclude binary file downloads from compression — compressing multi-GB
+    // files in real-time on a weak CPU adds massive latency for zero benefit
+    opts.MimeTypes = new[] { "text/html", "text/css", "application/javascript", "application/json", "text/plain" };
+});
 
 // Configure Forwarded Headers for reverse proxy environments (e.g. Docker + Nginx)
 builder.Services.Configure<ForwardedHeadersOptions>(options =>

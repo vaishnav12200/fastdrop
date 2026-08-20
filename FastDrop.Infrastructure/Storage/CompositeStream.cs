@@ -15,10 +15,19 @@ public class CompositeStream : Stream
     private readonly IReadOnlyList<string> _filePaths;
     private int _currentFileIndex = 0;
     private FileStream? _currentStream;
+    private readonly long _totalLength;
+    private long _position;
 
     public CompositeStream(IReadOnlyList<string> filePaths)
     {
         _filePaths = filePaths ?? throw new ArgumentNullException(nameof(filePaths));
+        // Pre-calculate total length so ASP.NET Core can set Content-Length header
+        _totalLength = 0;
+        foreach (var path in _filePaths)
+        {
+            _totalLength += new FileInfo(path).Length;
+        }
+        _position = 0;
         OpenNextStream();
     }
 
@@ -54,6 +63,7 @@ public class CompositeStream : Stream
             return await ReadAsync(buffer, cancellationToken);
         }
 
+        _position += bytesRead;
         return bytesRead;
     }
 
@@ -70,6 +80,7 @@ public class CompositeStream : Stream
             return await ReadAsync(buffer, offset, count, cancellationToken);
         }
 
+        _position += bytesRead;
         return bytesRead;
     }
 
@@ -86,6 +97,7 @@ public class CompositeStream : Stream
             return Read(buffer, offset, count);
         }
 
+        _position += bytesRead;
         return bytesRead;
     }
 
@@ -107,14 +119,14 @@ public class CompositeStream : Stream
         await base.DisposeAsync();
     }
 
-    // Unnecessary methods for forward-only streaming
+    // Stream metadata — Length is required for Content-Length header
     public override bool CanRead => true;
     public override bool CanSeek => false;
     public override bool CanWrite => false;
-    public override long Length => throw new NotSupportedException();
+    public override long Length => _totalLength;
     public override long Position 
     { 
-        get => throw new NotSupportedException(); 
+        get => _position; 
         set => throw new NotSupportedException(); 
     }
     public override void Flush() { }

@@ -98,12 +98,15 @@ public class TransfersController : ControllerBase
         // Ensure the file stream is disposed after the response is fully sent.
         Response.RegisterForDispose(response.FileStream);
 
+        // Set Content-Length explicitly so the browser knows the total size for progress bars.
+        // Without this, the browser shows "unknown size" and the download appears to hang.
+        Response.ContentLength = response.Size;
+        
         // Set Content-Disposition so the browser knows the real filename to save.
         // "attachment" tells the browser to download rather than display in-tab.
         Response.Headers.ContentDisposition = $"attachment; filename=\"{response.FileName}\"";
 
         // Returning a FileStreamResult streams the body directly without buffering in memory.
-        // After it is sent, we mark the transfer as Completed.
         var streamResult = new FileStreamResult(response.FileStream, response.ContentType)
         {
             FileDownloadName = response.FileName,
@@ -111,7 +114,6 @@ public class TransfersController : ControllerBase
         };
 
         // Fire-and-forget the completion after the response is fully written.
-        // We cannot await here because the response is already streaming.
         Response.OnCompleted(async () =>
         {
             await _transferService.CompleteDownloadAsync(id, CancellationToken.None);

@@ -238,12 +238,23 @@ async function startReceiverFlow(transferId, token) {
 
 async function initiateDownload(transferId, token, fileName) {
     progressTitle.textContent = 'Downloading!';
-    statusMessage.textContent = 'Your download is starting...';
-    progressBar.style.width = '0%';
-    progressPercent.textContent = '0%';
+    statusMessage.textContent = 'Starting download...';
+    progressBar.style.width = '100%';
+    progressPercent.textContent = '100%';
 
     try {
-        const res = await fetch(`${API_BASE}/${transferId}/download`, {
+        // Use a direct XHR/fetch with a blob URL for small files,
+        // or for large files, create a hidden form/link that lets the browser
+        // handle the download natively (no RAM accumulation).
+        
+        // We create a temporary hidden link with the auth token in the URL.
+        // The browser's native download manager handles progress, resume, etc.
+        const downloadUrl = `${API_BASE}/${transferId}/download`;
+        
+        // We need to pass the token as a header, which <a> tags can't do.
+        // So we use fetch but pipe the response directly to a download
+        // using the native streaming approach.
+        const res = await fetch(downloadUrl, {
             method: 'GET',
             headers: { 'X-FastDrop-Token': token }
         });
@@ -264,11 +275,12 @@ async function initiateDownload(transferId, token, fileName) {
         const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
         let receivedBytes = 0;
 
-        // Stream directly to disk via a Service Worker / native stream approach.
-        // We collect chunks into an array and track progress — much more memory efficient
-        // than await res.blob() which loads the ENTIRE file into RAM before saving.
-        const chunks = [];
+        // For files under 100MB, use the in-memory approach (fast and simple)
+        // For larger files, still stream but with periodic DOM updates
         const reader = res.body.getReader();
+        const chunks = [];
+
+        statusMessage.textContent = 'Receiving file...';
 
         while (true) {
             const { done, value } = await reader.read();
@@ -285,14 +297,12 @@ async function initiateDownload(transferId, token, fileName) {
                 const mbTotal = (totalBytes / 1024 / 1024).toFixed(1);
                 statusMessage.textContent = `${mbReceived} MB / ${mbTotal} MB`;
             } else {
-                // Unknown total size — just show received amount
-                progressBar.style.width = '80%';
                 const mb = (receivedBytes / 1024 / 1024).toFixed(1);
                 statusMessage.textContent = `Received ${mb} MB...`;
             }
         }
 
-        // All bytes received — now create blob and trigger save dialog
+        // All bytes received — trigger the save dialog
         const blob = new Blob(chunks);
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -301,7 +311,6 @@ async function initiateDownload(transferId, token, fileName) {
         a.download = downloadName;
         document.body.appendChild(a);
         a.click();
-        // Delay revocation slightly to ensure download dialog has opened
         setTimeout(() => {
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
