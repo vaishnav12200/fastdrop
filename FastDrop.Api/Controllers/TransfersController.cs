@@ -74,10 +74,18 @@ public class TransfersController : ControllerBase
     }
 
     [HttpGet("{id:guid}/download")]
-    public async Task<IActionResult> DownloadFile(Guid id, [FromHeader(Name = "X-FastDrop-Token")] string token, CancellationToken cancellationToken)
+    public async Task<IActionResult> DownloadFile(
+        Guid id,
+        [FromHeader(Name = "X-FastDrop-Token")] string? headerToken,
+        [FromQuery(Name = "access_token")] string? queryToken,
+        CancellationToken cancellationToken)
     {
+        // A header is preferred for API clients. A query token lets the web app
+        // hand the request to the native browser download manager, which cannot
+        // send custom headers and does not buffer the entire file in memory.
+        var token = !string.IsNullOrWhiteSpace(headerToken) ? headerToken : queryToken;
         if (string.IsNullOrEmpty(token))
-            return Unauthorized("Missing X-FastDrop-Token header.");
+            return Unauthorized("Missing transfer token.");
 
         DownloadTransferResponse response;
         try
@@ -95,29 +103,13 @@ public class TransfersController : ControllerBase
             return BadRequest(ex.Message);
         }
 
-        // Ensure the file stream is disposed after the response is fully sent.
-        Response.RegisterForDispose(response.FileStream);
-
-        // Set Content-Length explicitly so the browser knows the total size for progress bars.
-        // Without this, the browser shows "unknown size" and the download appears to hang.
-        Response.ContentLength = response.Size;
-        
-        // Set Content-Disposition so the browser knows the real filename to save.
-        // "attachment" tells the browser to download rather than display in-tab.
-        Response.Headers.ContentDisposition = $"attachment; filename=\"{response.FileName}\"";
-
-        // Returning a FileStreamResult streams the body directly without buffering in memory.
+        // The stream is seekable, so ASP.NET Core can honor HTTP Range requests
+        // and browsers can resume a large download after a dropped connection.
         var streamResult = new FileStreamResult(response.FileStream, response.ContentType)
         {
             FileDownloadName = response.FileName,
-            EnableRangeProcessing = false // Must be false because CompositeStream is forward-only
+            EnableRangeProcessing = true
         };
-
-        // Fire-and-forget the completion after the response is fully written.
-        Response.OnCompleted(async () =>
-        {
-            await _transferService.CompleteDownloadAsync(id, CancellationToken.None);
-        });
 
         return streamResult;
     }

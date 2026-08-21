@@ -5,6 +5,7 @@ namespace FastDrop.Infrastructure.Storage;
 
 public class LocalFileStorage : IFileStorage
 {
+    private const int StreamBufferSize = 1024 * 1024;
     private readonly string _baseStoragePath;
 
     public LocalFileStorage(string baseStoragePath = "storage/transfers")
@@ -20,9 +21,11 @@ public class LocalFileStorage : IFileStorage
         // Name chunks simply: 000000, 000001, etc.
         var chunkPath = Path.Combine(transferDir, chunkNumber.ToString("D6"));
 
-        // FileShare.None prevents other processes from corrupting our write.
-        // bufferSize: 81920 (80KB) is the standard optimal size before hitting the Large Object Heap in .NET
-        using var fileStream = new FileStream(chunkPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 81920, useAsync: true);
+        // A 1 MiB async buffer reduces syscalls for large chunks without retaining
+        // the entire upload in memory. FileShare.None prevents concurrent writers.
+        await using var fileStream = new FileStream(chunkPath, FileMode.Create, FileAccess.Write,
+            FileShare.None, bufferSize: StreamBufferSize,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
         using var sha256 = SHA256.Create();
         
         // We wrap the fileStream in a CryptoStream so we calculate the hash WHILE writing to disk
@@ -60,7 +63,8 @@ public class LocalFileStorage : IFileStorage
         if (!File.Exists(chunkPath))
             throw new FileNotFoundException($"Chunk {chunkNumber} not found.");
 
-        Stream stream = new FileStream(chunkPath, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920, useAsync: true);
+        Stream stream = new FileStream(chunkPath, FileMode.Open, FileAccess.Read, FileShare.Read,
+            bufferSize: StreamBufferSize, FileOptions.Asynchronous | FileOptions.SequentialScan);
         return Task.FromResult(stream);
     }
 

@@ -225,11 +225,19 @@ public class TransferService : ITransferService
 
         var fileStream = await _fileStorage.OpenFinalFileAsync(transferId, transfer.File.TotalChunks, cancellationToken);
 
+        // A mismatched Content-Length leaves browsers waiting or makes them
+        // reject the response, so fail clearly instead of serving corrupt data.
+        if (fileStream.Length != transfer.File.Size)
+        {
+            await fileStream.DisposeAsync();
+            throw new InvalidOperationException("Stored file size does not match the transfer metadata.");
+        }
+
         return new DownloadTransferResponse(
             fileStream,
             transfer.File.OriginalFileName,
             transfer.File.ContentType,
-            transfer.File.Size
+            fileStream.Length
         );
     }
 

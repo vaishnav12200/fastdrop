@@ -77,7 +77,10 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(sp => ConnectionMultiplexe
 
 // Dependency Injection Registrations
 builder.Services.AddSingleton<ITokenGenerator, TokenGenerator>();
-builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
+// Local storage is convenient for development; production can point this at a
+// persistent volume with the Storage__BasePath environment variable.
+var storagePath = builder.Configuration["Storage:BasePath"] ?? "storage/transfers";
+builder.Services.AddSingleton<IFileStorage>(_ => new LocalFileStorage(storagePath));
 builder.Services.AddSingleton<IDistributedLockProvider, RedisLockProvider>();
 builder.Services.AddScoped<ITransferRepository, TransferRepository>();
 builder.Services.AddScoped<ITransferService, TransferService>();

@@ -1,4 +1,5 @@
-const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+const CHUNK_SIZE = 16 * 1024 * 1024; // 16 MiB chunks reduce request overhead for large transfers
+const MAX_UPLOAD_WORKERS = 6;
 const API_BASE = '/api/v1/Transfers';
 
 // UI Elements
@@ -167,9 +168,10 @@ async function startUploadProcess() {
         }
     };
 
-    // Start pool of concurrent workers (4 at a time)
+    // Six concurrent requests generally fill a broadband connection better than
+    // one request, while keeping browser memory bounded to roughly 96 MiB.
     const workers = [];
-    for (let i = 0; i < Math.min(4, totalChunks); i++) {
+    for (let i = 0; i < Math.min(MAX_UPLOAD_WORKERS, totalChunks); i++) {
         workers.push(uploadNextChunk());
     }
     await Promise.all(workers);
@@ -243,82 +245,19 @@ async function initiateDownload(transferId, token, fileName) {
     progressPercent.textContent = '100%';
 
     try {
-        // Use a direct XHR/fetch with a blob URL for small files,
-        // or for large files, create a hidden form/link that lets the browser
-        // handle the download natively (no RAM accumulation).
-        
-        // We create a temporary hidden link with the auth token in the URL.
-        // The browser's native download manager handles progress, resume, etc.
-        const downloadUrl = `${API_BASE}/${transferId}/download`;
-        
-        // We need to pass the token as a header, which <a> tags can't do.
-        // So we use fetch but pipe the response directly to a download
-        // using the native streaming approach.
-        const res = await fetch(downloadUrl, {
-            method: 'GET',
-            headers: { 'X-FastDrop-Token': token }
-        });
-
-        if (!res.ok) {
-            throw new Error(`Download failed: ${res.status} ${await res.text()}`);
-        }
-
-        // Get filename from Content-Disposition header if available
-        const disposition = res.headers.get('Content-Disposition');
-        let downloadName = fileName || 'download';
-        if (disposition) {
-            const match = disposition.match(/filename="?([^"]+)"?/);
-            if (match) downloadName = match[1];
-        }
-
-        const contentLength = res.headers.get('Content-Length');
-        const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
-        let receivedBytes = 0;
-
-        // For files under 100MB, use the in-memory approach (fast and simple)
-        // For larger files, still stream but with periodic DOM updates
-        const reader = res.body.getReader();
-        const chunks = [];
-
-        statusMessage.textContent = 'Receiving file...';
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            chunks.push(value);
-            receivedBytes += value.byteLength;
-
-            if (totalBytes > 0) {
-                const percent = Math.round((receivedBytes / totalBytes) * 100);
-                progressBar.style.width = `${percent}%`;
-                progressPercent.textContent = `${percent}%`;
-                const mbReceived = (receivedBytes / 1024 / 1024).toFixed(1);
-                const mbTotal = (totalBytes / 1024 / 1024).toFixed(1);
-                statusMessage.textContent = `${mbReceived} MB / ${mbTotal} MB`;
-            } else {
-                const mb = (receivedBytes / 1024 / 1024).toFixed(1);
-                statusMessage.textContent = `Received ${mb} MB...`;
-            }
-        }
-
-        // All bytes received — trigger the save dialog
-        const blob = new Blob(chunks);
-        const url = window.URL.createObjectURL(blob);
+        // Fetching then creating a Blob holds every byte in the tab's RAM. The
+        // native download manager streams to disk and can resume Range responses.
+        const downloadUrl = `${API_BASE}/${transferId}/download?access_token=${encodeURIComponent(token)}`;
         const a = document.createElement('a');
         a.style.display = 'none';
-        a.href = url;
-        a.download = downloadName;
+        a.href = downloadUrl;
         document.body.appendChild(a);
         a.click();
-        setTimeout(() => {
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-        }, 1000);
+        setTimeout(() => document.body.removeChild(a), 1000);
 
         progressBar.style.width = '100%';
         progressPercent.textContent = '100%';
-        statusMessage.textContent = 'Download complete!';
+        statusMessage.textContent = 'Download started in your browser.';
 
         setTimeout(() => switchView('success'), 800);
         document.querySelector('#view-success p').textContent = 'File successfully received!';

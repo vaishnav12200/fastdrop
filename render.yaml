@@ -9,7 +9,10 @@ services:
   - type: web
     name: fastdrop-api
     env: docker
-    plan: free # Change to starter/standard for production
+    # Free services have an ephemeral filesystem and are unsuitable for file
+    # transfers. For reliable hosted transfers, change to `starter` or above and
+    # attach a disk at /app/storage in the Render Dashboard (see README).
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     envVars:
@@ -26,6 +29,9 @@ services:
       # the OS inotify limit (128) on Render's shared infra. Not needed in production.
       - key: DOTNET_hostBuilder__reloadConfigOnChange
         value: "false"
+      # Set this after attaching the persistent disk described above.
+      # - key: Storage__BasePath
+      #   value: /app/storage/transfers
       # Neon DB Connection String must be added via the Render Dashboard manually for security
       - key: ConnectionStrings__DefaultConnection
         sync: false 

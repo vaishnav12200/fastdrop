@@ -51,3 +51,24 @@ FastDrop.Api (HTTP endpoints, controllers, middleware)
 ## Development Strategy
 
 The development of FastDrop is structured into distinct, incremental phases focusing first on core domain logic, advancing to robust chunk handling and streaming, and concluding with performance optimizations and dockerization. Performance is measured and optimized based on real-world benchmarks.
+
+## Deploying file transfers on Render
+
+The `free` Render plan cannot reliably host this application: its filesystem is
+ephemeral and Render can restart the instance, deleting every uploaded chunk.
+For a working hosted transfer service, use a paid web-service plan and attach a
+persistent disk in the Render Dashboard:
+
+1. Change the `fastdrop-api` service to `starter` or above.
+2. Add a persistent disk mounted at `/app/storage`. Choose a size larger than
+   the largest supported transfer plus headroom (for example, 10 GB for files
+   up to about 8 GB).
+3. Set `Storage__BasePath=/app/storage/transfers` in the service environment.
+4. Keep the service at one instance. A Render disk can only be attached to one
+   instance; use object storage such as S3/R2 for a horizontally scalable
+   deployment.
+
+The download endpoint supports HTTP Range requests and the browser app hands
+downloads to the native browser download manager. This streams directly to the
+receiver's disk, avoids holding a whole multi-gigabyte file in tab memory, and
+allows a browser to resume after a dropped connection.

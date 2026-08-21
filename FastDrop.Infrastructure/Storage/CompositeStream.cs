@@ -1,136 +1,161 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace FastDrop.Infrastructure.Storage;
 
 /// <summary>
-/// A forward-only stream that seamlessly reads across multiple physical files.
-/// Eliminates the need to assemble chunks into a single large file.
+/// Presents separately stored chunks as one seekable file. Seeking enables HTTP
+/// Range requests, so browsers can resume an interrupted large download.
 /// </summary>
-public class CompositeStream : Stream
+public sealed class CompositeStream : Stream
 {
+    private const int StreamBufferSize = 1024 * 1024;
     private readonly IReadOnlyList<string> _filePaths;
-    private int _currentFileIndex = 0;
+    private readonly long[] _chunkStarts;
+    private int _currentFileIndex = -1;
     private FileStream? _currentStream;
     private readonly long _totalLength;
     private long _position;
 
     public CompositeStream(IReadOnlyList<string> filePaths)
     {
-        _filePaths = filePaths ?? throw new ArgumentNullException(nameof(filePaths));
-        // Pre-calculate total length so ASP.NET Core can set Content-Length header
-        _totalLength = 0;
-        foreach (var path in _filePaths)
-        {
-            _totalLength += new FileInfo(path).Length;
-        }
-        _position = 0;
-        OpenNextStream();
-    }
+        if (filePaths is null || filePaths.Count == 0)
+            throw new ArgumentException("At least one chunk path is required.", nameof(filePaths));
 
-    private void OpenNextStream()
-    {
-        _currentStream?.Dispose();
-        _currentStream = null;
+        _filePaths = filePaths;
+        _chunkStarts = new long[filePaths.Count];
+        long position = 0;
 
-        if (_currentFileIndex < _filePaths.Count)
+        for (var i = 0; i < filePaths.Count; i++)
         {
-            var path = _filePaths[_currentFileIndex];
+            var path = filePaths[i];
             if (!File.Exists(path))
-            {
                 throw new FileNotFoundException($"Missing chunk file: {path}");
-            }
-            
-            _currentStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 81920, useAsync: true);
-            _currentFileIndex++;
-        }
-    }
 
-    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-    {
-        if (_currentStream == null)
-            return 0; // EOF
-
-        int bytesRead = await _currentStream.ReadAsync(buffer, cancellationToken);
-        
-        // If we hit the end of the current chunk, open the next one and keep reading
-        if (bytesRead == 0)
-        {
-            OpenNextStream();
-            return await ReadAsync(buffer, cancellationToken);
+            _chunkStarts[i] = position;
+            position = checked(position + new FileInfo(path).Length);
         }
 
-        _position += bytesRead;
-        return bytesRead;
-    }
-
-    public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
-    {
-        if (_currentStream == null)
-            return 0; // EOF
-
-        int bytesRead = await _currentStream.ReadAsync(buffer, offset, count, cancellationToken);
-        
-        if (bytesRead == 0)
-        {
-            OpenNextStream();
-            return await ReadAsync(buffer, offset, count, cancellationToken);
-        }
-
-        _position += bytesRead;
-        return bytesRead;
+        _totalLength = position;
     }
 
     public override int Read(byte[] buffer, int offset, int count)
     {
-        if (_currentStream == null)
-            return 0;
+        ArgumentNullException.ThrowIfNull(buffer);
+        return Read(buffer.AsSpan(offset, count));
+    }
 
-        int bytesRead = _currentStream.Read(buffer, offset, count);
-        
-        if (bytesRead == 0)
+    public override int Read(Span<byte> buffer)
+    {
+        while (_position < _totalLength)
         {
-            OpenNextStream();
-            return Read(buffer, offset, count);
+            EnsureStreamAtPosition();
+            var bytesRead = _currentStream!.Read(buffer);
+            if (bytesRead > 0)
+            {
+                _position += bytesRead;
+                return bytesRead;
+            }
+
+            CloseCurrentStream();
         }
 
-        _position += bytesRead;
-        return bytesRead;
+        return 0;
+    }
+
+    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        while (_position < _totalLength)
+        {
+            EnsureStreamAtPosition();
+            var bytesRead = await _currentStream!.ReadAsync(buffer, cancellationToken);
+            if (bytesRead > 0)
+            {
+                _position += bytesRead;
+                return bytesRead;
+            }
+
+            await CloseCurrentStreamAsync();
+        }
+
+        return 0;
+    }
+
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+        ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+    public override long Seek(long offset, SeekOrigin origin)
+    {
+        var target = origin switch
+        {
+            SeekOrigin.Begin => offset,
+            SeekOrigin.Current => checked(_position + offset),
+            SeekOrigin.End => checked(_totalLength + offset),
+            _ => throw new ArgumentOutOfRangeException(nameof(origin))
+        };
+
+        if (target < 0 || target > _totalLength)
+            throw new IOException("Attempted to seek outside the composite file.");
+
+        _position = target;
+        CloseCurrentStream();
+        return _position;
     }
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
-        {
-            _currentStream?.Dispose();
-        }
+            CloseCurrentStream();
         base.Dispose(disposing);
     }
 
     public override async ValueTask DisposeAsync()
     {
-        if (_currentStream != null)
-        {
-            await _currentStream.DisposeAsync();
-        }
+        await CloseCurrentStreamAsync();
         await base.DisposeAsync();
     }
 
-    // Stream metadata — Length is required for Content-Length header
+    public override void Flush() { }
+    public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     public override bool CanRead => true;
-    public override bool CanSeek => false;
+    public override bool CanSeek => true;
     public override bool CanWrite => false;
     public override long Length => _totalLength;
-    public override long Position 
-    { 
-        get => _position; 
-        set => throw new NotSupportedException(); 
-    }
-    public override void Flush() { }
-    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override long Position { get => _position; set => Seek(value, SeekOrigin.Begin); }
     public override void SetLength(long value) => throw new NotSupportedException();
     public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+    private void EnsureStreamAtPosition()
+    {
+        var desiredFileIndex = GetFileIndex(_position);
+        if (_currentStream is not null && _currentFileIndex == desiredFileIndex)
+            return;
+
+        CloseCurrentStream();
+        _currentStream = new FileStream(_filePaths[desiredFileIndex], FileMode.Open, FileAccess.Read,
+            FileShare.Read, bufferSize: StreamBufferSize, FileOptions.Asynchronous | FileOptions.RandomAccess);
+        _currentStream.Position = _position - _chunkStarts[desiredFileIndex];
+        _currentFileIndex = desiredFileIndex;
+    }
+
+    private int GetFileIndex(long position)
+    {
+        if (position < 0 || position >= _totalLength)
+            throw new ArgumentOutOfRangeException(nameof(position));
+
+        var index = Array.BinarySearch(_chunkStarts, position);
+        return index >= 0 ? index : ~index - 1;
+    }
+
+    private void CloseCurrentStream()
+    {
+        _currentStream?.Dispose();
+        _currentStream = null;
+        _currentFileIndex = -1;
+    }
+
+    private async ValueTask CloseCurrentStreamAsync()
+    {
+        if (_currentStream is not null)
+            await _currentStream.DisposeAsync();
+        _currentStream = null;
+        _currentFileIndex = -1;
+    }
 }
