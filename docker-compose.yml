@@ -10,6 +10,20 @@ services:
       - redis_data:/data
     restart: unless-stopped
 
+  clamav:
+    image: clamav/clamav:1.5.4
+    container_name: fastdrop_clamav
+    environment:
+      - CLAMD_CONF_TCPSocket=3310
+      - CLAMD_CONF_StreamMaxLength=4G
+      - CLAMD_CONF_MaxScanSize=4G
+      - CLAMD_CONF_MaxFileSize=4G
+      - CLAMD_CONF_AlertExceedsMax=yes
+      - CLAMD_CONF_MaxThreads=2
+    volumes:
+      - clamav_database:/var/lib/clamav
+    restart: unless-stopped
+
   api:
     build:
       context: .
@@ -22,12 +36,17 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - ConnectionStrings__Redis=redis:6379
+      - MalwareScanner__Host=clamav
+      - MalwareScanner__Port=3310
+      - Storage__BasePath=/app/storage/transfers
     volumes:
       - storage_data:/app/storage
     depends_on:
       - redis
+      - clamav
     restart: unless-stopped
 
 volumes:
   redis_data:
   storage_data:
+  clamav_database:

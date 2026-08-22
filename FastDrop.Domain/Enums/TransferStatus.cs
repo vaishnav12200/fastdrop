@@ -11,5 +11,8 @@ public enum TransferStatus
     Completed = 6,
     Cancelled = 7,
     Expired = 8,
-    Failed = 9
+    Failed = 9,
+    Scanning = 10,
+    Clean = 11,
+    Blocked = 12
 }

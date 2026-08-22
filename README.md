@@ -72,3 +72,18 @@ The download endpoint supports HTTP Range requests and the browser app hands
 downloads to the native browser download manager. This streams directly to the
 receiver's disk, avoids holding a whole multi-gigabyte file in tab memory, and
 allows a browser to resume after a dropped connection.
+
+## Malware scanning and quarantined uploads
+
+FastDrop does not create a receiver link until the complete upload has passed a
+ClamAV scan. The local Compose stack starts ClamAV automatically. Files follow
+`Uploading → Scanning → Clean → link generated`; detections are blocked and
+their stored chunks are deleted. If ClamAV is unavailable or rejects an
+oversized scan, FastDrop fails closed: the transfer stays in `Scanning` and no
+share URL is issued.
+
+For Render, run ClamAV as a private service in the same region and set
+`MalwareScanner__Host` and `MalwareScanner__Port=3310` on the API service. Do
+not expose ClamAV's TCP port publicly. The included Compose configuration sets
+ClamAV's stream and scan limits to 4 GB; adjust those limits together with the
+maximum file size you offer.

@@ -42,6 +42,17 @@ public class TransferRepository : ITransferRepository
             .CountAsync(c => c.FileMetadataId == fileMetadataId, ct);
     }
 
+    public async Task<List<TransferSession>> GetByStatusAsync(TransferStatus status, int batchSize, CancellationToken ct = default)
+    {
+        return await _dbContext.TransferSessions
+            .Include(t => t.File)
+                .ThenInclude(f => f.Chunks)
+            .Where(t => t.Status == status)
+            .OrderBy(t => t.CreatedAt)
+            .Take(batchSize)
+            .ToListAsync(ct);
+    }
+
     public async Task<List<TransferSession>> GetExpiredTransfersAsync(DateTimeOffset now, int batchSize, CancellationToken ct = default)
     {
         // Terminal states — no action needed, never include them.

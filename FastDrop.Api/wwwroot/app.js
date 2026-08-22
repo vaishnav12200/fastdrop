@@ -85,12 +85,9 @@ async function handleFileSelection(file) {
 
         console.log('Transfer created:', currentTransfer);
 
-        // API returns TransferId (PascalCase), ASP.NET serializes as camelCase -> transferId
-        const shareUrl = `${window.location.origin}/?id=${currentTransfer.transferId}&token=${encodeURIComponent(currentTransfer.receiverToken)}`;
-        shareLinkInput.value = shareUrl;
-
-        switchView('waiting');
-        startPollingForReceiver();
+        // A receiver link is deliberately not available yet. Upload to the
+        // server quarantine first; it is generated only after malware scanning.
+        await startUploadProcess();
     } catch (err) {
         alert('Error creating transfer: ' + err.message);
     }
@@ -104,21 +101,6 @@ copyBtn.addEventListener('click', () => {
     copyBtn.textContent = 'Copied!';
     setTimeout(() => copyBtn.textContent = 'Copy', 2000);
 });
-
-function startPollingForReceiver() {
-    pollInterval = setInterval(async () => {
-        try {
-            const res = await fetch(`${API_BASE}/${currentTransfer.transferId}`);
-            if (!res.ok) return;
-            const data = await res.json();
-
-            if (data.status === 'ReceiverConnected' || data.status === 'Uploading') {
-                clearInterval(pollInterval);
-                startUploadProcess();
-            }
-        } catch (e) { console.error('Polling error:', e); }
-    }, 2000);
-}
 
 async function startUploadProcess() {
     switchView('progress');
@@ -177,8 +159,42 @@ async function startUploadProcess() {
     await Promise.all(workers);
 
     if (!hasFailed) {
-        statusMessage.textContent = 'All chunks uploaded!';
-        switchView('success');
+        progressTitle.textContent = 'Scanning file...';
+        statusMessage.textContent = 'Checking the completed file for known threats before creating the share link.';
+        progressChunks.textContent = 'Security scan in progress';
+        await waitForScanAndPublish();
+    }
+}
+
+async function waitForScanAndPublish() {
+    while (true) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        try {
+            const statusResponse = await fetch(`${API_BASE}/${currentTransfer.transferId}`);
+            if (!statusResponse.ok) throw new Error(`Could not check scan status: ${statusResponse.status}`);
+            const transfer = await statusResponse.json();
+
+            if (transfer.status === 'Blocked') {
+                throw new Error('This file was blocked by the malware scanner and cannot be shared.');
+            }
+            if (transfer.status !== 'Clean') continue;
+
+            const publishResponse = await fetch(`${API_BASE}/${currentTransfer.transferId}/publish`, {
+                method: 'POST',
+                headers: { 'X-FastDrop-Token': currentTransfer.senderToken }
+            });
+            if (!publishResponse.ok) throw new Error(`Could not create secure link: ${await publishResponse.text()}`);
+
+            const share = await publishResponse.json();
+            shareLinkInput.value = `${window.location.origin}/?id=${currentTransfer.transferId}&token=${encodeURIComponent(share.receiverToken)}`;
+            switchView('waiting');
+            return;
+        } catch (error) {
+            console.error(error);
+            alert(error.message);
+            switchView('upload');
+            return;
+        }
     }
 }
 
@@ -208,29 +224,9 @@ async function startReceiverFlow(transferId, token) {
             return;
         }
 
-        statusMessage.textContent = 'Waiting for sender to start uploading...';
-
-        // Poll until transfer is Ready
-        pollInterval = setInterval(async () => {
-            try {
-                const res = await fetch(`${API_BASE}/${transferId}`);
-                if (!res.ok) return;
-                const data = await res.json();
-
-                if (data.fileName) fileNameDisplay.textContent = data.fileName;
-
-                if (data.status === 'Ready' || data.status === 'Downloading') {
-                    clearInterval(pollInterval);
-                    initiateDownload(transferId, decodedToken, data.fileName);
-                } else if (data.status === 'Uploading') {
-                    progressTitle.textContent = 'Receiving...';
-                    statusMessage.textContent = 'Sender is uploading. Please wait...';
-                    progressBar.style.width = '80%';
-                    progressPercent.textContent = 'Uploading';
-                    progressChunks.textContent = '';
-                }
-            } catch (e) { console.error('Polling error:', e); }
-        }, 2000);
+        // Links only exist after a clean scan and a complete upload. Joining
+        // therefore authorizes an immediately available download.
+        initiateDownload(transferId, decodedToken);
 
     } catch (err) {
         alert('Failed to connect: ' + err.message);

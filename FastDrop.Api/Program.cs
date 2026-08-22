@@ -81,6 +81,7 @@ builder.Services.AddSingleton<ITokenGenerator, TokenGenerator>();
 // persistent volume with the Storage__BasePath environment variable.
 var storagePath = builder.Configuration["Storage:BasePath"] ?? "storage/transfers";
 builder.Services.AddSingleton<IFileStorage>(_ => new LocalFileStorage(storagePath));
+builder.Services.AddSingleton<IFileSecurityScanner, ClamAvFileSecurityScanner>();
 builder.Services.AddSingleton<IDistributedLockProvider, RedisLockProvider>();
 builder.Services.AddScoped<ITransferRepository, TransferRepository>();
 builder.Services.AddScoped<ITransferService, TransferService>();
@@ -88,6 +89,7 @@ builder.Services.AddScoped<ITransferService, TransferService>();
 // Register the background cleanup worker.
 // AddHostedService registers it as a singleton that is started and stopped with the application.
 builder.Services.AddHostedService<TransferCleanupWorker>();
+builder.Services.AddHostedService<TransferScanWorker>();
 
 // Redis Registration
 builder.Services.AddStackExchangeRedisCache(options =>

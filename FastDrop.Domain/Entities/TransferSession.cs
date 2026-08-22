@@ -59,9 +59,7 @@ public class TransferSession
 
     public void StartUpload()
     {
-        if (Status != TransferStatus.Created && 
-            Status != TransferStatus.WaitingForReceiver && 
-            Status != TransferStatus.ReceiverConnected)
+        if (Status != TransferStatus.Created && Status != TransferStatus.Uploading)
             throw new InvalidOperationException($"Cannot transition from {Status} to {TransferStatus.Uploading}");
             
         Status = TransferStatus.Uploading;
@@ -69,8 +67,34 @@ public class TransferSession
 
     public void MarkAsReady()
     {
-        EnsureState(TransferStatus.Uploading);
+        if (Status != TransferStatus.Uploading && Status != TransferStatus.ReceiverConnected)
+            throw new InvalidOperationException($"Cannot transition from {Status} to {TransferStatus.Ready}");
         Status = TransferStatus.Ready;
+    }
+
+    public void BeginScanning()
+    {
+        EnsureState(TransferStatus.Uploading);
+        Status = TransferStatus.Scanning;
+    }
+
+    public void MarkClean()
+    {
+        EnsureState(TransferStatus.Scanning);
+        Status = TransferStatus.Clean;
+    }
+
+    public void Block()
+    {
+        EnsureState(TransferStatus.Scanning);
+        Status = TransferStatus.Blocked;
+    }
+
+    public void PublishReceiver(string receiverTokenHash)
+    {
+        EnsureState(TransferStatus.Clean);
+        ReceiverTokenHash = receiverTokenHash;
+        Status = TransferStatus.WaitingForReceiver;
     }
 
     public void StartDownload()

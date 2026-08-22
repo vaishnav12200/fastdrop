@@ -73,6 +73,19 @@ public class TransfersController : ControllerBase
         }
     }
 
+    [HttpPost("{id:guid}/publish")]
+    public async Task<IActionResult> PublishTransfer(Guid id, [FromHeader(Name = "X-FastDrop-Token")] string? token, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return Unauthorized("Missing X-FastDrop-Token header.");
+        try
+        {
+            var response = await _transferService.PublishTransferAsync(id, token, cancellationToken);
+            return response is null ? NotFound() : Ok(response);
+        }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+    }
+
     [HttpGet("{id:guid}/download")]
     public async Task<IActionResult> DownloadFile(
         Guid id,

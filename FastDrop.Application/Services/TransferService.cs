@@ -29,7 +29,9 @@ public class TransferService : ITransferService
     public async Task<CreateTransferResponse> CreateTransferAsync(CreateTransferRequest request, CancellationToken cancellationToken = default)
     {
         var senderToken = _tokenGenerator.GenerateToken();
-        var receiverToken = _tokenGenerator.GenerateToken();
+        // Reserve the required database field with an unusable hash. A real
+        // receiver token is generated only after the scan passes.
+        var receiverTokenPlaceholder = _tokenGenerator.GenerateToken();
 
         var file = new FileMetadata(
             request.FileName, 
@@ -41,7 +43,7 @@ public class TransferService : ITransferService
         // Setting a fixed 24-hour expiration for now
         var transfer = new TransferSession(
             senderToken.HashedToken,
-            receiverToken.HashedToken,
+            receiverTokenPlaceholder.HashedToken,
             file,
             TimeSpan.FromHours(24));
 
@@ -51,7 +53,6 @@ public class TransferService : ITransferService
         return new CreateTransferResponse(
             transfer.Id,
             senderToken.RawToken, // Only return raw tokens once!
-            receiverToken.RawToken,
             transfer.ExpiresAt
         );
     }
@@ -110,7 +111,11 @@ public class TransferService : ITransferService
             }
             
             // Updates state to ReceiverConnected if currently waiting.
-            transfer.ConnectReceiver(); 
+            transfer.ConnectReceiver();
+            // Uploading and scanning have already completed before a receiver
+            // URL can exist, so joining makes the file immediately downloadable.
+            if (transfer.Status == TransferStatus.ReceiverConnected)
+                transfer.MarkAsReady();
             await _repository.SaveChangesAsync(cancellationToken);
             await _cache.RemoveAsync($"Transfer_{transferId}", cancellationToken);
         }
@@ -133,7 +138,7 @@ public class TransferService : ITransferService
             throw new UnauthorizedAccessException("Invalid sender token.");
         }
 
-        if (transfer.Status == TransferStatus.Created || transfer.Status == TransferStatus.WaitingForReceiver || transfer.Status == TransferStatus.ReceiverConnected)
+        if (transfer.Status == TransferStatus.Created)
         {
             transfer.StartUpload();
         }
@@ -184,12 +189,10 @@ public class TransferService : ITransferService
                 
                 if (transfer != null && transfer.Status == TransferStatus.Uploading)
                 {
-                    // No more slow Assembly process!
-                    // The file hash is just set to a dummy value or we leave it blank, 
-                    // as chunk-level hashes already guarantee integrity.
+                    // Quarantine the completed file until the background scanner
+                    // has inspected it. No receiver token exists at this point.
                     transfer.File.SetFileHash("composite-stream-no-global-hash");
-
-                    transfer.MarkAsReady();
+                    transfer.BeginScanning();
                     await _repository.SaveChangesAsync(cancellationToken);
                     await _cache.RemoveAsync($"Transfer_{transferId}", cancellationToken);
                 }
@@ -197,6 +200,22 @@ public class TransferService : ITransferService
         }
 
         return new UploadChunkResponse(chunkNumber, totalChunks, receivedChunks, isComplete);
+    }
+
+    public async Task<PublishTransferResponse?> PublishTransferAsync(Guid transferId, string senderToken, CancellationToken cancellationToken = default)
+    {
+        var transfer = await _repository.GetByIdAsync(transferId, cancellationToken);
+        if (transfer is null) return null;
+        if (!_tokenGenerator.VerifyToken(senderToken, transfer.SenderTokenHash))
+            throw new UnauthorizedAccessException("Invalid sender token.");
+        if (transfer.Status != TransferStatus.Clean)
+            throw new InvalidOperationException("The file is not cleared for sharing yet.");
+
+        var receiverToken = _tokenGenerator.GenerateToken();
+        transfer.PublishReceiver(receiverToken.HashedToken);
+        await _repository.SaveChangesAsync(cancellationToken);
+        await _cache.RemoveAsync($"Transfer_{transferId}", cancellationToken);
+        return new PublishTransferResponse(receiverToken.RawToken);
     }
 
     public async Task<DownloadTransferResponse?> InitiateDownloadAsync(Guid transferId, string receiverToken, CancellationToken cancellationToken = default)

@@ -11,9 +11,10 @@ public record CreateTransferRequest(
 public record CreateTransferResponse(
     Guid TransferId, 
     string SenderToken, 
-    string ReceiverToken, 
     DateTimeOffset ExpiresAt
 );
+
+public record PublishTransferResponse(string ReceiverToken);
 
 public record TransferDetailsResponse(
     Guid TransferId,
