@@ -3,6 +3,7 @@ using System;
 using FastDrop.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace FastDrop.Infrastructure.Migrations
 {
     [DbContext(typeof(FastDropDbContext))]
-    partial class FastDropDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260822055024_AddExternalScanTracking")]
+    partial class AddExternalScanTracking
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

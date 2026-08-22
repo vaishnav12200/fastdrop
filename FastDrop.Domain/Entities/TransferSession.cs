@@ -14,6 +14,9 @@ public class TransferSession
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset ExpiresAt { get; private set; }
     public DateTimeOffset? CompletedAt { get; private set; }
+    public string? ScannerReference { get; private set; }
+    public DateTimeOffset? NextScanAttemptAt { get; private set; }
+    public int ScanAttemptCount { get; private set; }
 
     public FileMetadata File { get; private set; }
 
@@ -76,18 +79,39 @@ public class TransferSession
     {
         EnsureState(TransferStatus.Uploading);
         Status = TransferStatus.Scanning;
+        ScannerReference = null;
+        NextScanAttemptAt = null;
+        ScanAttemptCount = 0;
+    }
+
+    public void RecordPendingScan(string scanReference, DateTimeOffset now)
+    {
+        EnsureState(TransferStatus.Scanning);
+        ScannerReference = scanReference;
+        NextScanAttemptAt = now.AddSeconds(5);
+        ScanAttemptCount = 0;
+    }
+
+    public void DeferScan(DateTimeOffset now)
+    {
+        EnsureState(TransferStatus.Scanning);
+        ScanAttemptCount++;
+        var delaySeconds = Math.Min(300, 5 * (1 << Math.Min(ScanAttemptCount - 1, 6)));
+        NextScanAttemptAt = now.AddSeconds(delaySeconds);
     }
 
     public void MarkClean()
     {
         EnsureState(TransferStatus.Scanning);
         Status = TransferStatus.Clean;
+        NextScanAttemptAt = null;
     }
 
     public void Block()
     {
         EnsureState(TransferStatus.Scanning);
         Status = TransferStatus.Blocked;
+        NextScanAttemptAt = null;
     }
 
     public void PublishReceiver(string receiverTokenHash)

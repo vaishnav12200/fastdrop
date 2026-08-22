@@ -32,12 +32,10 @@ services:
       # Set this after attaching the persistent disk described above.
       # - key: Storage__BasePath
       #   value: /app/storage/transfers
-      # A ClamAV/private scanner service is required in production. Do not set
-      # this to a public endpoint. Files remain quarantined if it is unavailable.
-      # - key: MalwareScanner__Host
-      #   value: fastdrop-clamav
-      # - key: MalwareScanner__Port
-      #   value: "3310"
+      # MetaDefender Cloud is used in Production. Add its API key in the Render
+      # Dashboard; an unavailable/misconfigured scanner never produces a link.
+      - key: MalwareScanner__MetaDefenderCloud__ApiKey
+        sync: false
       # Neon DB Connection String must be added via the Render Dashboard manually for security
       - key: ConnectionStrings__DefaultConnection
         sync: false 

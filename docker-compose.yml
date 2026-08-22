@@ -38,6 +38,7 @@ services:
       - ConnectionStrings__Redis=redis:6379
       - MalwareScanner__Host=clamav
       - MalwareScanner__Port=3310
+      - MalwareScanner__Provider=ClamAv
       - Storage__BasePath=/app/storage/transfers
     volumes:
       - storage_data:/app/storage

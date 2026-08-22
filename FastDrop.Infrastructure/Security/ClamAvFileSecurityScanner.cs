@@ -22,7 +22,7 @@ public sealed class ClamAvFileSecurityScanner : IFileSecurityScanner
         _logger = logger;
     }
 
-    public async Task<FileScanResult> ScanAsync(Stream content, CancellationToken cancellationToken = default)
+    public async Task<FileScanResult> SubmitAsync(FileScanRequest request, Stream content, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -68,6 +68,9 @@ public sealed class ClamAvFileSecurityScanner : IFileSecurityScanner
             return new FileScanResult(FileScanVerdict.Unavailable, "Scanner unavailable");
         }
     }
+
+    public Task<FileScanResult> GetResultAsync(string scanReference, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new FileScanResult(FileScanVerdict.Unavailable, "ClamAV scans complete synchronously."));
 
     private static async Task<string> ReadResponseAsync(NetworkStream network, CancellationToken cancellationToken)
     {

@@ -81,7 +81,23 @@ builder.Services.AddSingleton<ITokenGenerator, TokenGenerator>();
 // persistent volume with the Storage__BasePath environment variable.
 var storagePath = builder.Configuration["Storage:BasePath"] ?? "storage/transfers";
 builder.Services.AddSingleton<IFileStorage>(_ => new LocalFileStorage(storagePath));
-builder.Services.AddSingleton<IFileSecurityScanner, ClamAvFileSecurityScanner>();
+var scannerProvider = builder.Configuration["MalwareScanner:Provider"] ?? "ClamAv";
+if (string.Equals(scannerProvider, "MetaDefenderCloud", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddHttpClient<IFileSecurityScanner, MetaDefenderCloudFileSecurityScanner>(client =>
+    {
+        client.BaseAddress = new Uri(builder.Configuration["MalwareScanner:MetaDefenderCloud:BaseUrl"] ?? "https://api.metadefender.com/v4/");
+        client.Timeout = Timeout.InfiniteTimeSpan; // Per-operation timeouts are enforced by the scanner.
+    });
+}
+else if (string.Equals(scannerProvider, "ClamAv", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddSingleton<IFileSecurityScanner, ClamAvFileSecurityScanner>();
+}
+else
+{
+    throw new InvalidOperationException($"Unsupported malware scanner provider '{scannerProvider}'.");
+}
 builder.Services.AddSingleton<IDistributedLockProvider, RedisLockProvider>();
 builder.Services.AddScoped<ITransferRepository, TransferRepository>();
 builder.Services.AddScoped<ITransferService, TransferService>();

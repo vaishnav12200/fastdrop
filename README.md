@@ -76,14 +76,53 @@ allows a browser to resume after a dropped connection.
 ## Malware scanning and quarantined uploads
 
 FastDrop does not create a receiver link until the complete upload has passed a
-ClamAV scan. The local Compose stack starts ClamAV automatically. Files follow
-`Uploading → Scanning → Clean → link generated`; detections are blocked and
-their stored chunks are deleted. If ClamAV is unavailable or rejects an
-oversized scan, FastDrop fails closed: the transfer stays in `Scanning` and no
-share URL is issued.
+malware scan. Files follow `Uploading → Scanning → Clean → link generated`.
+Threats and files that cannot be safely scanned are `Blocked`; their stored
+chunks are deleted. Scanner errors, timeouts, unknown results, and unavailable
+services fail closed: the transfer stays quarantined and never receives a link.
 
-For Render, run ClamAV as a private service in the same region and set
-`MalwareScanner__Host` and `MalwareScanner__Port=3310` on the API service. Do
-not expose ClamAV's TCP port publicly. The included Compose configuration sets
-ClamAV's stream and scan limits to 4 GB; adjust those limits together with the
-maximum file size you offer.
+### Local development
+
+`docker compose up` continues to use local ClamAV. It streams the composite
+chunk file to ClamAV without creating `final.dat` or loading the full file into
+memory. The Compose configuration keeps ClamAV's scan limit at 4 GB.
+
+### Render production: MetaDefender Cloud
+
+Production uses [OPSWAT MetaDefender Cloud](https://opswat.com/products/metadefender/cloud), not a Render private ClamAV service. FastDrop streams the quarantined composite file once to `POST /v4/file`, stores MetaDefender's `data_id` in Postgres, and then polls only that ID. This means no `final.dat`, no whole-file RAM allocation, and no repeated GB-sized upload while waiting for a verdict.
+
+MetaDefender Cloud is asynchronous, so scanning may take seconds to minutes;
+archives and free-tier requests can take longer. Its free API is lower priority.
+The paid Cloud tiers advertise limits of 140 MB, 256 MB, and **1 GB+** depending
+on the contract. Set `MaximumFileSizeBytes` to the actual value shown by your
+MetaDefender API key/contract. FastDrop rejects files above that configured
+limit rather than falsely treating them as clean. A provider that only supports
+smaller files is not suitable for FastDrop's GB-sized production use.
+
+Private scanning requires a paid MetaDefender Cloud license. With
+`PrivateScanning=true`, FastDrop sends `samplesharing: 0`; MetaDefender states
+that it removes the uploaded file after processing while retaining the scan
+result. Even with this mode, the file's content leaves Render for scanning, so
+do not present the service as end-to-end encrypted.
+
+Add these variables in the Render service's **Environment** tab:
+
+```text
+MalwareScanner__MetaDefenderCloud__ApiKey=<your MetaDefender Cloud API key>
+MalwareScanner__MetaDefenderCloud__MaximumFileSizeBytes=1073741824
+MalwareScanner__MetaDefenderCloud__PrivateScanning=true
+MalwareScanner__MetaDefenderCloud__UploadTimeoutMinutes=45
+MalwareScanner__MetaDefenderCloud__PollTimeoutSeconds=20
+```
+
+`ApiKey` is required. The remaining values show the supplied 1 GiB default;
+increase `MaximumFileSizeBytes` only when your paid MetaDefender contract
+supports it. `BaseUrl` defaults to `https://api.metadefender.com/v4/`; set
+`MalwareScanner__MetaDefenderCloud__BaseUrl` only for an approved alternate
+endpoint.
+
+FastDrop retries result polling three times for transient API failures, then
+uses persisted exponential backoff (5 seconds through 5 minutes). It does not
+automatically retry a timed-out submission, because doing so could send a
+multi-GB file to the provider twice. A failed submission remains quarantined
+and is retried later; a submission that returned a `data_id` is only polled.

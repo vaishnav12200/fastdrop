@@ -13,6 +13,8 @@ public class TransferSessionConfiguration : IEntityTypeConfiguration<TransferSes
         // Required string fields
         builder.Property(t => t.SenderTokenHash).IsRequired().HasMaxLength(256);
         builder.Property(t => t.ReceiverTokenHash).IsRequired().HasMaxLength(256);
+        builder.Property(t => t.ScannerReference).HasMaxLength(512);
+        builder.Property(t => t.ScanAttemptCount).IsRequired();
 
         // Status is an enum, we store it as an integer in the database by default (efficient)
         builder.Property(t => t.Status).IsRequired();

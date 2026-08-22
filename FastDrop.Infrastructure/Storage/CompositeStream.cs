@@ -44,38 +44,56 @@ public sealed class CompositeStream : Stream
 
     public override int Read(Span<byte> buffer)
     {
+        if (buffer.IsEmpty)
+            return 0;
+
+        var totalBytesRead = 0;
+
         while (_position < _totalLength)
         {
             EnsureStreamAtPosition();
-            var bytesRead = _currentStream!.Read(buffer);
+            var bytesRead = _currentStream!.Read(buffer[totalBytesRead..]);
             if (bytesRead > 0)
             {
                 _position += bytesRead;
-                return bytesRead;
+                totalBytesRead += bytesRead;
+                if (totalBytesRead == buffer.Length)
+                    return totalBytesRead;
+
+                continue;
             }
 
             CloseCurrentStream();
         }
 
-        return 0;
+        return totalBytesRead;
     }
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
+        if (buffer.IsEmpty)
+            return 0;
+
+        var totalBytesRead = 0;
+
         while (_position < _totalLength)
         {
             EnsureStreamAtPosition();
-            var bytesRead = await _currentStream!.ReadAsync(buffer, cancellationToken);
+            var bytesRead = await _currentStream!.ReadAsync(buffer[totalBytesRead..], cancellationToken);
             if (bytesRead > 0)
             {
                 _position += bytesRead;
-                return bytesRead;
+                totalBytesRead += bytesRead;
+                if (totalBytesRead == buffer.Length)
+                    return totalBytesRead;
+
+                continue;
             }
 
             await CloseCurrentStreamAsync();
         }
 
-        return 0;
+        return totalBytesRead;
     }
 
     public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>

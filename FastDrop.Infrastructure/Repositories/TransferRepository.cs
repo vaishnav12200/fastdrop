@@ -48,7 +48,10 @@ public class TransferRepository : ITransferRepository
             .Include(t => t.File)
                 .ThenInclude(f => f.Chunks)
             .Where(t => t.Status == status)
-            .OrderBy(t => t.CreatedAt)
+            // Transfers scheduled for a future retry must not starve other
+            // quarantined uploads that are ready to be submitted or polled.
+            .OrderBy(t => t.NextScanAttemptAt ?? DateTimeOffset.MinValue)
+            .ThenBy(t => t.CreatedAt)
             .Take(batchSize)
             .ToListAsync(ct);
     }
