@@ -89,9 +89,13 @@ endpoint; it does not contact Postgres, Redis, storage, ClamAV, or MetaDefender.
 
 ### Local development
 
-`docker compose up` continues to use local ClamAV. It streams the composite
-chunk file to ClamAV without creating `final.dat` or loading the full file into
-memory. The Compose configuration keeps ClamAV's scan limit at 4 GB.
+`docker compose up --build` uses local PostgreSQL, Redis, and ClamAV. The
+Compose database is intentionally isolated from Neon: local and Render use
+different chunk storage, so they must never run scan workers against the same
+transfer records. Compose does not load a local `.env` file, so a Neon
+connection string cannot accidentally cross that boundary. It streams the composite chunk file to ClamAV without
+creating `final.dat` or loading the full file into memory. The Compose
+configuration keeps ClamAV's scan limit at 4 GB.
 
 ### Render production: MetaDefender Cloud
 

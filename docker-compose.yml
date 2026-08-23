@@ -1,6 +1,23 @@
-version: '3.8'
-
 services:
+  # Local-only metadata database. Do not point local Docker at the same Neon
+  # database as Render: each environment has different chunk storage, and a
+  # scan worker in one environment would otherwise fail the other's uploads.
+  postgres:
+    image: postgres:16-alpine
+    container_name: fastdrop_postgres
+    environment:
+      POSTGRES_DB: fastdrop
+      POSTGRES_USER: fastdrop
+      POSTGRES_PASSWORD: fastdrop_local_only
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fastdrop -d fastdrop"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     container_name: fastdrop_redis
@@ -31,10 +48,11 @@ services:
     container_name: fastdrop_api
     ports:
       - "8080:8080"
-    env_file:
-      - .env
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
+      # Overrides any Neon connection in .env. Local uploads must use this
+      # isolated database because their chunks live in the local Docker volume.
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=fastdrop;Username=fastdrop;Password=fastdrop_local_only
       - ConnectionStrings__Redis=redis:6379
       - MalwareScanner__Host=clamav
       - MalwareScanner__Port=3310
@@ -43,11 +61,16 @@ services:
     volumes:
       - storage_data:/app/storage
     depends_on:
-      - redis
-      - clamav
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      clamav:
+        condition: service_started
     restart: unless-stopped
 
 volumes:
+  postgres_data:
   redis_data:
   storage_data:
   clamav_database:
