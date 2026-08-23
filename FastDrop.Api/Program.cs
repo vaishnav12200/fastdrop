@@ -136,6 +136,8 @@ builder.Services.AddDbContext<FastDropDbContext>(options =>
 
 var app = builder.Build();
 
+app.Logger.LogInformation("Configured malware scanner provider: {ScannerProvider}.", scannerProvider);
+
 // Auto-apply EF Core migrations on startup.
 // This is safe for containerized deployments where migrations must run before first request.
 // Includes retry logic to handle SQL Server container startup lag.
@@ -195,6 +197,10 @@ app.UseStaticFiles(new StaticFileOptions
 });
 
 app.MapControllers(); // Maps the HTTP routes to our Controllers
+
+// Intentionally does not touch Postgres, Redis, storage, or the scanner. Render
+// can use it to distinguish a running web process from a healthy transfer job.
+app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 
 // Explicitly serve about.html so the SPA fallback doesn't swallow it
 app.MapGet("/about", async context =>

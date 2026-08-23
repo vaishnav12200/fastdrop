@@ -107,6 +107,19 @@ public class TransferSession
         NextScanAttemptAt = null;
     }
 
+    /// <summary>
+    /// Ends a scan when the quarantined content can no longer be recovered,
+    /// such as after a host restart removed local chunks. A failed transfer is
+    /// never shareable and must not be submitted to a scanner again.
+    /// </summary>
+    public void MarkFailed()
+    {
+        EnsureState(TransferStatus.Scanning);
+        Status = TransferStatus.Failed;
+        ScannerReference = null;
+        NextScanAttemptAt = null;
+    }
+
     public void Block()
     {
         EnsureState(TransferStatus.Scanning);

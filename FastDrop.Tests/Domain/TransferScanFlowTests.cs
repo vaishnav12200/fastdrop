@@ -24,4 +24,18 @@ public class TransferScanFlowTests
         transfer.MarkAsReady();
         Assert.Equal(TransferStatus.Ready, transfer.Status);
     }
+
+    [Fact]
+    public void Missing_quarantined_chunks_end_the_transfer_without_making_it_shareable()
+    {
+        var file = new FileMetadata("missing.bin", 5, "application/octet-stream", 1, 5);
+        var transfer = new TransferSession("sender-hash", "placeholder-hash", file, TimeSpan.FromHours(1));
+
+        transfer.StartUpload();
+        transfer.BeginScanning();
+        transfer.MarkFailed();
+
+        Assert.Equal(TransferStatus.Failed, transfer.Status);
+        Assert.Throws<InvalidOperationException>(() => transfer.PublishReceiver("receiver-hash"));
+    }
 }

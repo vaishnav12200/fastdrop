@@ -44,6 +44,7 @@ public sealed class MetaDefenderCloudFileSecurityScanner : IFileSecurityScanner
 
         try
         {
+            _logger.LogInformation("Uploading {FileSize} bytes to MetaDefender Cloud for malware scanning.", request.FileSize);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(_uploadTimeout);
             using var message = new HttpRequestMessage(HttpMethod.Post, "file");
@@ -67,6 +68,7 @@ public sealed class MetaDefenderCloudFileSecurityScanner : IFileSecurityScanner
             if (!document.RootElement.TryGetProperty("data_id", out var dataId) || string.IsNullOrWhiteSpace(dataId.GetString()))
                 return new FileScanResult(FileScanVerdict.Unavailable, "MetaDefender Cloud did not return a scan reference.");
 
+            _logger.LogInformation("MetaDefender Cloud accepted the file and returned scan reference {ScanReference}.", dataId.GetString());
             return new FileScanResult(FileScanVerdict.Pending, ScanReference: dataId.GetString());
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -89,6 +91,7 @@ public sealed class MetaDefenderCloudFileSecurityScanner : IFileSecurityScanner
         {
             try
             {
+                _logger.LogInformation("Polling MetaDefender Cloud scan reference {ScanReference}, attempt {Attempt}.", scanReference, attempt + 1);
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeout.CancelAfter(_pollTimeout);
                 using var message = new HttpRequestMessage(HttpMethod.Get, $"file/{Uri.EscapeDataString(scanReference)}");

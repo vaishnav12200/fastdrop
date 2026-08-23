@@ -13,6 +13,7 @@ services:
     # transfers. For reliable hosted transfers, change to `starter` or above and
     # attach a disk at /app/storage in the Render Dashboard (see README).
     plan: free
+    healthCheckPath: /health
     dockerfilePath: ./Dockerfile
     dockerContext: .
     envVars:

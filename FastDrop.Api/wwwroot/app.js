@@ -177,6 +177,9 @@ async function waitForScanAndPublish() {
             if (transfer.status === 'Blocked') {
                 throw new Error('This file was blocked by the malware scanner and cannot be shared.');
             }
+            if (transfer.status === 'Failed') {
+                throw new Error('The uploaded file is no longer available and cannot be shared. Please upload it again.');
+            }
             if (transfer.status !== 'Clean') continue;
 
             const publishResponse = await fetch(`${API_BASE}/${currentTransfer.transferId}/publish`, {

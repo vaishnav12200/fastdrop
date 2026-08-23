@@ -81,6 +81,12 @@ Threats and files that cannot be safely scanned are `Blocked`; their stored
 chunks are deleted. Scanner errors, timeouts, unknown results, and unavailable
 services fail closed: the transfer stays quarantined and never receives a link.
 
+If transfer metadata survives but its required local chunks do not (for example,
+after a Render restart without a persistent disk), FastDrop marks the transfer
+`Failed`, deletes any remaining directory, and never retries or shares it. The
+sender must upload the file again. Render can probe the lightweight `GET /health`
+endpoint; it does not contact Postgres, Redis, storage, ClamAV, or MetaDefender.
+
 ### Local development
 
 `docker compose up` continues to use local ClamAV. It streams the composite
