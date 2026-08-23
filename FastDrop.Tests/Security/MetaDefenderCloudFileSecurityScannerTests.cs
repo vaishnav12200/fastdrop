@@ -40,11 +40,23 @@ public class MetaDefenderCloudFileSecurityScannerTests
         Assert.Equal(FileScanVerdict.Rejected, result.Verdict);
     }
 
-    private static MetaDefenderCloudFileSecurityScanner CreateScanner(string responseBody, HttpMessageHandler? handler = null, long maximumFileSizeBytes = 1_073_741_824)
+    [Fact]
+    public async Task SubmitAsync_keeps_files_quarantined_when_the_api_key_is_missing()
+    {
+        var handler = new StubHandler(_ => throw new InvalidOperationException("The request must not be sent."));
+        var scanner = CreateScanner("{}", handler, apiKey: null);
+
+        var result = await scanner.SubmitAsync(new FileScanRequest("example.txt", 5), new MemoryStream("hello"u8.ToArray()));
+
+        Assert.Equal(FileScanVerdict.Unavailable, result.Verdict);
+    }
+
+    private static MetaDefenderCloudFileSecurityScanner CreateScanner(string responseBody, HttpMessageHandler? handler = null,
+        long maximumFileSizeBytes = 1_073_741_824, string? apiKey = "test-key")
     {
         var values = new Dictionary<string, string?>
         {
-            ["MalwareScanner:MetaDefenderCloud:ApiKey"] = "test-key",
+            ["MalwareScanner:MetaDefenderCloud:ApiKey"] = apiKey,
             ["MalwareScanner:MetaDefenderCloud:MaximumFileSizeBytes"] = maximumFileSizeBytes.ToString(),
             ["MalwareScanner:MetaDefenderCloud:PrivateScanning"] = "true"
         };

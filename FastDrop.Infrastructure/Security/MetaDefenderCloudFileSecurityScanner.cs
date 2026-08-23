@@ -38,9 +38,15 @@ public sealed class MetaDefenderCloudFileSecurityScanner : IFileSecurityScanner
     public async Task<FileScanResult> SubmitAsync(FileScanRequest request, Stream content, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(_apiKey))
+        {
+            _logger.LogError("MetaDefender Cloud API key is not configured; the transfer will remain quarantined.");
             return new FileScanResult(FileScanVerdict.Unavailable, "MetaDefender Cloud API key is not configured.");
+        }
         if (request.FileSize < 0 || request.FileSize > _maximumFileSizeBytes)
+        {
+            _logger.LogWarning("File size {FileSize} exceeds the configured MetaDefender Cloud limit of {MaximumFileSizeBytes} bytes.", request.FileSize, _maximumFileSizeBytes);
             return new FileScanResult(FileScanVerdict.Rejected, $"File exceeds the configured scanner limit of {_maximumFileSizeBytes} bytes.");
+        }
 
         try
         {
@@ -85,7 +91,10 @@ public sealed class MetaDefenderCloudFileSecurityScanner : IFileSecurityScanner
     public async Task<FileScanResult> GetResultAsync(string scanReference, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(_apiKey))
+        {
+            _logger.LogError("MetaDefender Cloud API key is not configured; the transfer will remain quarantined.");
             return new FileScanResult(FileScanVerdict.Unavailable, "MetaDefender Cloud API key is not configured.");
+        }
 
         for (var attempt = 0; attempt < 3; attempt++)
         {
